@@ -69,7 +69,7 @@ AIbot/
 
 ### 前置条件
 
-- [AstrBot](https://github.com/Soulter/AstrBot) 已安装并连接 QQ
+- [AstrBot](https://github.com/AstrBotDevs/AstrBot) 已安装并连接 QQ
 - AstrBot LLMPerception 插件（提供 `$SYSTEM_TIME`、`$USER_QQ`、`$IS_MASTER` 变量）
 
 ### 步骤
