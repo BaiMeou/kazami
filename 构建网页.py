@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""AIbot 项目浏览器构建脚本
+"""银月脉纪 (kazami) 项目浏览器构建脚本
 
 遍历项目目录，读取所有 Markdown 文件，生成数据文件供浏览器使用。
 仅依赖 Python 标准库。
