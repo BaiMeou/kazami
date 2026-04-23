@@ -1,833 +1,829 @@
-/* AIbot 项目浏览器 — 应用逻辑 */
-/* 运行于 file:// 协议，不使用 ES modules / fetch */
-
+/**
+ * AIbot 项目浏览器 — 和风古典版
+ * 纯静态、零依赖、file:// 协议兼容
+ */
 (function () {
   'use strict';
 
-  var D = window.APP_DATA;
-  var FILES = D.files;
-  var TREE = D.tree;
-  var STATS = D.stats;
-  var VOLUMES = D.volumes;
-  var CHARS = D.characters;
-  var KEYWORDS = D.worldKeywords;
+  var DATA = window.APP_DATA;
+  if (!DATA) { document.body.innerHTML = '<p>数据加载失败，请先运行 python 构建网页.py</p>'; return; }
 
-  // ===== 全局状态 =====
+  // ═══════════════════════════════════════════
+  // 工具函数
+  // ═══════════════════════════════════════════
+  function $(sel, ctx) { return (ctx || document).querySelector(sel); }
+  function $$(sel, ctx) { return Array.from((ctx || document).querySelectorAll(sel)); }
+  function esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+  function debounce(fn, ms) { var t; return function () { clearTimeout(t); t = setTimeout(fn, ms); }; }
+  function show(el) { el && el.classList.remove('hidden'); }
+  function hide(el) { el && el.classList.add('hidden'); }
+
+  // ═══════════════════════════════════════════
+  // 状态管理
+  // ═══════════════════════════════════════════
   var state = {
-    currentFile: null,
-    currentTab: 'home',
-    novelMode: false,      // 是否在小说阅读流程中
-    readingMode: false,
-    allChapters: [],        // 扁平化的章节路径列表
+    tab: 'home',
+    file: null,
+    volume: null,
+    chapter: null,
+    novelMode: false,
+    theme: localStorage.getItem('aibot_theme') || '',
+    fontSize: parseInt(localStorage.getItem('aibot_fontsize')) || 16,
   };
 
-  // 构建扁平章节列表
-  VOLUMES.forEach(function (v) {
-    v.chapters.forEach(function (ch) {
-      state.allChapters.push('小说/' + ch + '.md');
-    });
-  });
+  // 阅读进度
+  var PROGRESS_KEY = 'aibot_reading_progress';
+  function getProgress() {
+    try { return JSON.parse(localStorage.getItem(PROGRESS_KEY)) || {}; } catch (e) { return {}; }
+  }
+  function saveProgress(path, data) {
+    var p = getProgress();
+    p[path] = Object.assign(p[path] || {}, data);
+    localStorage.setItem(PROGRESS_KEY, JSON.stringify(p));
+  }
+  function isRead(path) { var p = getProgress(); return p[path] && p[path].read; }
 
-  // ===== DOM 引用 =====
-  var $ = function (id) { return document.getElementById(id); };
-  var contentEl = $('content');
-  var contentScroll = $('content-scroll');
-  var breadcrumbEl = $('breadcrumb');
-  var headerActions = $('header-actions');
-  var tocEl = $('toc');
-  var readingOverlay = $('reading-overlay');
-  var readingTitle = $('reading-title');
-  var readingBody = $('reading-body');
-  var shortcutsModal = $('shortcuts-modal');
-
-  // ===== Markdown 渲染器 =====
-  function escapeHtml(text) {
-    return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  // ═══════════════════════════════════════════
+  // 初始化
+  // ═══════════════════════════════════════════
+  function init() {
+    applyTheme(state.theme);
+    applyFontSize(state.fontSize);
+    bindEvents();
+    buildSidebar();
+    renderDashboard();
+    handleHash();
+    window.addEventListener('hashchange', handleHash);
   }
 
-  function renderMarkdown(md) {
-    var html = md;
-
-    // 代码块
-    html = html.replace(/```(\w*)\n([\s\S]*?)```/g, function (_, lang, code) {
-      return '<pre><code>' + escapeHtml(code.trimEnd()) + '</code></pre>';
-    });
-
-    // 行内代码
-    html = html.replace(/`([^`\n]+)`/g, '<code>$1</code>');
-
-    // 表格
-    html = html.replace(/^(\|.+\|)\n(\|[-| :]+\|)\n((?:\|.+\|\n?)*)/gm, function (_, header, sep, body) {
-      var heads = header.split('|').slice(1, -1).map(function (h) { return '<th>' + h.trim() + '</th>'; }).join('');
-      var rows = body.trim().split('\n').map(function (row) {
-        var cells = row.split('|').slice(1, -1).map(function (c) { return '<td>' + c.trim() + '</td>'; }).join('');
-        return '<tr>' + cells + '</tr>';
-      }).join('');
-      return '<table><thead><tr>' + heads + '</tr></thead><tbody>' + rows + '</tbody></table>';
-    });
-
-    // 标题 (加 id 用于 TOC 锚点)
-    html = html.replace(/^#### (.+)$/gm, function (_, t) { return '<h4 id="' + slugify(t) + '">' + t + '</h4>'; });
-    html = html.replace(/^### (.+)$/gm, function (_, t) { return '<h3 id="' + slugify(t) + '">' + t + '</h3>'; });
-    html = html.replace(/^## (.+)$/gm, function (_, t) { return '<h2 id="' + slugify(t) + '">' + t + '</h2>'; });
-    html = html.replace(/^# (.+)$/gm, function (_, t) { return '<h1 id="' + slugify(t) + '">' + t + '</h1>'; });
-
-    // 引用块
-    html = html.replace(/^> (.+)$/gm, '<blockquote><p>$1</p></blockquote>');
-
-    // 水平线
-    html = html.replace(/^---+$/gm, '<hr>');
-
-    // 粗体和斜体
-    html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-    html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
-
-    // 链接
-    html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
-
-    // 无序列表
-    html = html.replace(/^(\s*)[-*] (.+)$/gm, function (_, indent, text) {
-      return indent + '<li>' + text + '</li>';
-    });
-    html = html.replace(/((?:^<li>.*<\/li>\n?)+)/gm, '<ul>$1</ul>');
-
-    // 有序列表
-    html = html.replace(/^\d+\. (.+)$/gm, '<oli>$1</oli>');
-    html = html.replace(/((?:<oli>.*<\/oli>\n?)+)/g, function (match) {
-      return '<ol>' + match.replace(/<\/?oli>/g, function (t) { return t.replace('oli', 'li'); }) + '</ol>';
-    });
-
-    // 段落
-    var lines = html.split('\n');
-    var result = [];
-    var inPre = false;
-    for (var i = 0; i < lines.length; i++) {
-      var line = lines[i];
-      if (line.indexOf('<pre>') !== -1) inPre = true;
-      if (line.indexOf('</pre>') !== -1) { inPre = false; result.push(line); continue; }
-      if (inPre) { result.push(line); continue; }
-      if (line.trim() === '') { result.push(''); continue; }
-      if (/^<[a-z]/.test(line.trim())) { result.push(line); continue; }
-      if (!/^</.test(line.trim())) {
-        result.push('<p>' + line + '</p>');
-      } else {
-        result.push(line);
-      }
-    }
-
-    return result.join('\n');
+  // ═══════════════════════════════════════════
+  // 主题与字体
+  // ═══════════════════════════════════════════
+  function applyTheme(t) {
+    document.documentElement.setAttribute('data-theme', t);
+    state.theme = t;
+    localStorage.setItem('aibot_theme', t);
+    var btn = $('#btn-theme');
+    if (btn) btn.innerHTML = t === 'dark' ? '&#9788;' : '&#9790;';
+  }
+  function toggleTheme() { applyTheme(state.theme === 'dark' ? '' : 'dark'); }
+  function applyFontSize(s) {
+    document.documentElement.style.setProperty('--font-size', s + 'px');
+    state.fontSize = s;
+    localStorage.setItem('aibot_fontsize', s);
+  }
+  function cycleFontSize() {
+    var sizes = [14, 16, 18];
+    var i = (sizes.indexOf(state.fontSize) + 1) % sizes.length;
+    applyFontSize(sizes[i]);
   }
 
-  var slugCounter = {};
-  function slugify(text) {
-    var base = text.replace(/[^\w\u4e00-\u9fff]+/g, '-').replace(/^-|-$/g, '').toLowerCase();
-    if (!base) base = 'heading';
-    if (slugCounter[base] === undefined) {
-      slugCounter[base] = 0;
-      return base;
-    }
-    slugCounter[base]++;
-    return base + '-' + slugCounter[base];
-  }
-
-  function resetSlugs() { slugCounter = {}; }
-
-  // ===== 标签页切换 =====
-  var tabBtns = document.querySelectorAll('.tab-btn');
-  var tabPanels = document.querySelectorAll('.tab-panel');
-
-  function switchTab(tabName) {
-    state.currentTab = tabName;
-    for (var i = 0; i < tabBtns.length; i++) {
-      tabBtns[i].classList.toggle('active', tabBtns[i].getAttribute('data-tab') === tabName);
-    }
-    for (var j = 0; j < tabPanels.length; j++) {
-      tabPanels[j].classList.toggle('active', tabPanels[j].id === 'panel-' + tabName);
-    }
-    if (tabName === 'search') {
-      setTimeout(function () { $('search-input').focus(); }, 50);
-    }
-  }
-
-  for (var i = 0; i < tabBtns.length; i++) {
-    (function (btn) {
+  // ═══════════════════════════════════════════
+  // 事件绑定
+  // ═══════════════════════════════════════════
+  function bindEvents() {
+    $$('.tab-btn').forEach(function (btn) {
+      btn.addEventListener('click', function () { switchTab(btn.dataset.tab); });
+    });
+    var btnTheme = $('#btn-theme'); if (btnTheme) btnTheme.addEventListener('click', toggleTheme);
+    var btnFont = $('#btn-font-size'); if (btnFont) btnFont.addEventListener('click', cycleFontSize);
+    var btnRead = $('#btn-reading-mode'); if (btnRead) btnRead.addEventListener('click', toggleReadingMode);
+    var btnHelp = $('#btn-help'); if (btnHelp) btnHelp.addEventListener('click', function () { toggleModal('help-modal'); });
+    var si = $('#search-input');
+    if (si) si.addEventListener('input', debounce(doSearch, 200));
+    var ff = $('#file-filter');
+    if (ff) ff.addEventListener('input', debounce(filterFileTree, 150));
+    var rc = $('#reading-close'); if (rc) rc.addEventListener('click', closeReading);
+    var pc = $('#prev-chapter'); if (pc) pc.addEventListener('click', function () { navChapter(-1); });
+    var nc = $('#next-chapter'); if (nc) nc.addEventListener('click', function () { navChapter(1); });
+    $$('.modal-close').forEach(function (btn) {
       btn.addEventListener('click', function () {
-        switchTab(btn.getAttribute('data-tab'));
+        var modal = btn.closest('[id$="-modal"]');
+        if (modal) hide(modal);
       });
-    })(tabBtns[i]);
+    });
+    $$('.tl-filter').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        $$('.tl-filter').forEach(function (b) { b.classList.remove('active'); });
+        btn.classList.add('active');
+        renderTimeline(btn.dataset.vol);
+      });
+    });
+    var mb = $('#mobile-menu-btn');
+    if (mb) mb.addEventListener('click', function () { document.body.classList.toggle('sidebar-open'); });
+    var ov = $('#sidebar-overlay');
+    if (ov) ov.addEventListener('click', function () { document.body.classList.remove('sidebar-open'); });
+    document.addEventListener('keydown', handleKey);
+    var content = $('#content');
+    if (content) content.addEventListener('scroll', debounce(highlightTOC, 50));
   }
 
-  // ===== 首页面板 =====
-  function renderHomeSidebar() {
+  // ═══════════════════════════════════════════
+  // Hash 路由
+  // ═══════════════════════════════════════════
+  function handleHash() {
+    var h = location.hash.slice(1);
+    if (!h) { switchTab('home'); showDashboard(); return; }
+    var parts = h.split('/');
+    var cmd = decodeURIComponent(parts[0]);
+    var arg = parts.slice(1).map(decodeURIComponent).join('/');
+    if (cmd === 'file' && arg) { switchTab('files'); showFile(arg); }
+    else if (cmd === 'novel' && arg) { switchTab('novels'); openNovelChapter(arg); }
+    else if (cmd === 'search' && arg) { switchTab('search'); $('#search-input').value = arg; doSearch(); }
+    else if (cmd === 'timeline') { switchTab('timeline'); showTimelineView(); }
+    else if (cmd === 'wiki') { switchTab('wiki'); if (arg) showWikiCategory(arg); else renderWikiHome(); }
+    else if (cmd === 'char' && arg) { switchTab('characters'); showCharGraph(); highlightNode(arg); }
+    else { switchTab('home'); showDashboard(); }
+  }
+
+  // ═══════════════════════════════════════════
+  // 标签页切换
+  // ═══════════════════════════════════════════
+  function switchTab(tab) {
+    state.tab = tab;
+    $$('.tab-btn').forEach(function (b) { b.classList.toggle('active', b.dataset.tab === tab); });
+    $$('.panel').forEach(function (p) { p.classList.toggle('active', p.id === 'panel-' + tab); });
+    hide($('#dashboard')); hide($('#file-content')); hide($('#timeline-view'));
+    hide($('#wiki-content')); hide($('#character-graph')); hide($('#chapter-nav'));
+    hide($('#toc'));
+    if (tab === 'home') showDashboard();
+    else if (tab === 'characters') showCharGraph();
+    else if (tab === 'timeline') showTimelineView();
+    else if (tab === 'wiki') { show($('#wiki-content')); renderWikiHome(); }
+    document.body.classList.remove('sidebar-open');
+  }
+
+  // ═══════════════════════════════════════════
+  // 侧边栏构建
+  // ═══════════════════════════════════════════
+  function buildSidebar() {
+    buildFileTree();
+    buildNovelList();
+    buildWikiCategories();
+    buildHomePanel();
+  }
+
+  function buildHomePanel() {
+    var panel = $('#panel-home');
+    if (!panel) return;
+    var progress = getProgress();
+    var novelFiles = [];
+    DATA.volumes.forEach(function (v) { v.chapters.forEach(function (c) { novelFiles.push('小说/' + c + '.md'); }); });
+    var readCount = novelFiles.filter(function (f) { return progress[f] && progress[f].read; }).length;
+    var lastRead = null, lastTime = 0;
+    Object.keys(progress).forEach(function (k) {
+      if (progress[k].lastTime > lastTime) { lastTime = progress[k].lastTime; lastRead = k; }
+    });
+    var h = '<div class="home-stats">';
+    h += '<div class="stat-badge"><span class="stat-num">' + DATA.stats.total_files + '</span><span class="stat-label">文件</span></div>';
+    h += '<div class="stat-badge"><span class="stat-num">' + DATA.stats.total_lines.toLocaleString() + '</span><span class="stat-label">行</span></div>';
+    h += '<div class="stat-badge"><span class="stat-num">' + readCount + '/29</span><span class="stat-label">已读</span></div>';
+    h += '</div>';
+    if (lastRead) {
+      var name = lastRead.split('/').pop().replace('.md', '');
+      h += '<a class="continue-btn" href="#file/' + esc(lastRead) + '">继续阅读: ' + esc(name) + '</a>';
+    }
+    panel.innerHTML = h;
+  }
+
+  function buildFileTree() {
+    var container = $('#file-tree');
+    if (!container) return;
+    container.innerHTML = renderTree(DATA.tree, '');
+  }
+
+  function renderTree(node, prefix) {
     var h = '';
-
-    // 统计
-    h += '<h2>项目概况</h2>';
-    h += '<div class="stats-mini">';
-    h += '<div class="stat-mini"><div class="num">' + STATS.total_files + '</div><div class="lbl">活跃文件</div></div>';
-    h += '<div class="stat-mini"><div class="num">' + STATS.total_lines.toLocaleString() + '</div><div class="lbl">总行数</div></div>';
-    h += '</div>';
-
-    // 角色
-    h += '<h2>角色</h2>';
-    CHARS.forEach(function (c) {
-      h += '<div class="char-mini" onclick="APP.showCharacter(\'' + c.name + '\')">';
-      h += '<div class="name">' + c.name + '</div>';
-      h += '<div class="tag">' + c.species + ' · ' + c.age + '岁</div>';
-      h += '<div class="desc">' + c.trait + '</div>';
-      h += '</div>';
+    var keys = Object.keys(node).sort(function (a, b) {
+      var aDir = node[a] !== null, bDir = node[b] !== null;
+      if (aDir !== bDir) return aDir ? -1 : 1;
+      return a.localeCompare(b);
     });
-
-    // 卷
-    h += '<h2>故事</h2>';
-    VOLUMES.forEach(function (v) {
-      h += '<div class="vol-card" style="border-left-color:' + v.color + '" onclick="APP.openVolume(\'' + v.id + '\')">';
-      h += '<div class="vol-title">' + v.id + '：' + v.title + '</div>';
-      h += '<div class="vol-sub">' + v.subtitle + '</div>';
-      h += '<div class="vol-meta"><span>' + v.time + '</span><span>' + v.chapters.length + '章</span></div>';
-      h += '</div>';
-    });
-
-    // 关键词
-    h += '<h2>世界观</h2>';
-    h += '<div class="kw-wrap">';
-    KEYWORDS.forEach(function (k) {
-      h += '<span class="kw-tag">' + k + '</span>';
-    });
-    h += '</div>';
-
-    $('home-content').innerHTML = h;
-  }
-
-  // ===== 仪表盘 (主内容区首页) =====
-  function showDashboard() {
-    state.currentFile = null;
-    state.novelMode = false;
-    breadcrumbEl.innerHTML = '<span class="bc-current">首页仪表盘</span>';
-    headerActions.innerHTML = '';
-    tocEl.classList.remove('visible');
-
-    var h = '<div class="dashboard">';
-    h += '<h1>AIbot 项目仪表盘</h1>';
-    h += '<div class="dash-desc">AI 角色扮演 + 世界观构建项目 · AstrBot/QQ 平台</div>';
-
-    // 统计
-    h += '<div class="dash-stats">';
-    h += '<div class="dash-stat"><div class="num">' + STATS.total_files + '</div><div class="lbl">活跃文件</div></div>';
-    h += '<div class="dash-stat"><div class="num">' + STATS.total_lines.toLocaleString() + '</div><div class="lbl">总行数</div></div>';
-    var mods = STATS.modules;
-    for (var mod in mods) {
-      h += '<div class="dash-stat"><div class="num">' + mods[mod].files + '</div><div class="lbl">' + mod + '/</div></div>';
-    }
-    h += '</div>';
-
-    // 角色
-    h += '<div class="dash-section"><h2>核心角色</h2><div class="dash-chars">';
-    CHARS.forEach(function (c) {
-      h += '<div class="dash-char">';
-      h += '<h3>' + c.name + '</h3>';
-      h += '<div class="species">' + c.species + ' · ' + c.age + '岁</div>';
-      h += '<div class="trait">' + c.trait + '</div>';
-      h += '<div class="relation">' + c.relation + '</div>';
-      h += '<p>' + c.desc + '</p>';
-      h += '</div>';
-    });
-    h += '</div></div>';
-
-    // 故事概览
-    h += '<div class="dash-section"><h2>故事概览</h2><div class="dash-volumes">';
-    VOLUMES.forEach(function (v) {
-      h += '<div class="dash-vol" style="border-left-color:' + v.color + '" onclick="APP.openVolume(\'' + v.id + '\')">';
-      h += '<div class="dv-header"><span class="dv-id">' + v.id + '</span><span class="dv-title">' + v.title + '</span></div>';
-      h += '<div class="dv-sub">' + v.subtitle + '</div>';
-      h += '<div class="dv-meta"><span>' + v.time + '</span><span>' + v.chapters.length + ' 章</span></div>';
-      h += '</div>';
-    });
-    h += '</div></div>';
-
-    // 世界观关键词
-    h += '<div class="dash-section"><h2>世界观关键词</h2><div class="dash-keywords">';
-    KEYWORDS.forEach(function (k) {
-      h += '<span class="dash-kw">' + k + '</span>';
-    });
-    h += '</div></div>';
-
-    h += '</div>';
-    contentEl.innerHTML = h;
-    contentScroll.scrollTop = 0;
-    updateHash('');
-  }
-
-  // ===== 显示角色详情 =====
-  function showCharacter(name) {
-    // 查找角色设定文件
-    var path = '角色/' + name + '.md';
-    if (FILES[path]) {
-      showFile(path);
-      switchTab('files');
-    }
-  }
-
-  // ===== 文件树 =====
-  function renderTree(tree, container, prefix) {
-    var dirs = [];
-    var files = [];
-
-    for (var name in tree) {
-      if (tree[name] === null) files.push(name);
-      else dirs.push(name);
-    }
-
-    dirs.sort();
-    files.sort();
-
-    dirs.forEach(function (dir) {
-      var dirEl = document.createElement('div');
-
-      var label = document.createElement('div');
-      label.className = 'tree-dir-label';
-      label.innerHTML = '<span class="arrow open">\u25B6</span><span class="dir-name">' + dir + '</span>';
-
-      var children = document.createElement('div');
-      children.className = 'tree-children';
-
-      label.addEventListener('click', function () {
-        children.classList.toggle('collapsed');
-        label.querySelector('.arrow').classList.toggle('open');
-      });
-
-      dirEl.appendChild(label);
-      dirEl.appendChild(children);
-      container.appendChild(dirEl);
-
-      renderTree(tree[dir], children, prefix ? prefix + '/' + dir : dir);
-    });
-
-    files.forEach(function (file) {
-      var fileEl = document.createElement('div');
-      fileEl.className = 'tree-file';
-      fileEl.textContent = file;
-      var fullPath = prefix ? prefix + '/' + file : file;
-      fileEl.setAttribute('data-path', fullPath);
-      fileEl.addEventListener('click', function () {
-        showFile(fullPath);
-      });
-      container.appendChild(fileEl);
-    });
-  }
-
-  function highlightTreeFile(path) {
-    var all = document.querySelectorAll('.tree-file.active');
-    for (var i = 0; i < all.length; i++) all[i].classList.remove('active');
-    if (!path) return;
-    var el = document.querySelector('.tree-file[data-path="' + CSS.escape(path) + '"]');
-    if (el) {
-      el.classList.add('active');
-      // 展开父目录
-      var parent = el.parentElement;
-      while (parent && parent.id !== 'tree-container') {
-        if (parent.classList.contains('tree-children')) {
-          parent.classList.remove('collapsed');
-          var arrow = parent.previousElementSibling;
-          if (arrow) {
-            var a = arrow.querySelector('.arrow');
-            if (a) a.classList.add('open');
-          }
-        }
-        parent = parent.parentElement;
-      }
-    }
-  }
-
-  // 文件过滤
-  $('file-filter-input').addEventListener('input', function () {
-    var query = this.value.trim().toLowerCase();
-    var items = document.querySelectorAll('#tree-container .tree-file');
-    var dirs = document.querySelectorAll('#tree-container .tree-dir-label');
-
-    if (!query) {
-      for (var i = 0; i < items.length; i++) items[i].style.display = '';
-      for (var j = 0; j < dirs.length; j++) dirs[j].parentElement.style.display = '';
-      return;
-    }
-
-    for (var k = 0; k < items.length; k++) {
-      var path = items[k].getAttribute('data-path').toLowerCase();
-      items[k].style.display = path.indexOf(query) !== -1 ? '' : 'none';
-    }
-    // 显示包含可见文件的目录
-    for (var m = 0; m < dirs.length; m++) {
-      var dirContainer = dirs[m].parentElement;
-      var children = dirContainer.querySelector('.tree-children');
-      if (children) {
-        var hasVisible = children.querySelector('.tree-file:not([style*="display: none"])');
-        dirContainer.style.display = hasVisible ? '' : 'none';
-        if (hasVisible) children.classList.remove('collapsed');
-      }
-    }
-  });
-
-  // ===== 显示文件 =====
-  function showFile(path) {
-    var content = FILES[path];
-    if (content === undefined) return;
-
-    state.currentFile = path;
-    highlightTreeFile(path);
-
-    // 面包屑
-    var parts = path.split('/');
-    var bc = '';
-    for (var i = 0; i < parts.length; i++) {
-      if (i < parts.length - 1) {
-        bc += '<span class="bc-part">' + parts[i] + '</span><span class="bc-sep">/</span>';
+    keys.forEach(function (key) {
+      var path = prefix ? prefix + '/' + key : key;
+      if (node[key] !== null) {
+        h += '<div class="tree-dir" data-path="' + esc(path) + '">';
+        h += '<div class="tree-dir-label" onclick="APP.toggleDir(this)"><span class="tree-arrow">&#9654;</span> ' + esc(key) + '</div>';
+        h += '<div class="tree-children hidden">' + renderTree(node[key], path) + '</div>';
+        h += '</div>';
       } else {
-        bc += '<span class="bc-current">' + parts[i] + '</span>';
+        var readMark = isRead(path) ? '<span class="read-mark">&#10003;</span>' : '';
+        h += '<div class="tree-file" onclick="APP.openFile(\'' + esc(path.replace(/'/g, "\\'")) + '\')">' + readMark + esc(key) + '</div>';
       }
-    }
-    breadcrumbEl.innerHTML = bc;
-
-    // 头部操作按钮
-    headerActions.innerHTML =
-      '<button class="header-btn" onclick="APP.openReading()">阅读模式</button>';
-
-    // 渲染内容
-    resetSlugs();
-    contentEl.innerHTML = '<div class="md-content">' + renderMarkdown(content) + '</div>';
-
-    // 小说章节导航
-    if (state.novelMode) {
-      appendChapterNav(path);
-    }
-
-    // TOC
-    buildToc(content);
-
-    contentScroll.scrollTop = 0;
-    updateHash('file/' + path);
-
-    // 高亮小说章节
-    highlightNovelChapter(path);
-  }
-
-  // ===== TOC 目录 =====
-  function buildToc(md) {
-    var headings = [];
-    var lines = md.split('\n');
-    resetSlugs();
-    for (var i = 0; i < lines.length; i++) {
-      var m = lines[i].match(/^(#{1,3}) (.+)$/);
-      if (m) {
-        headings.push({ level: m[1].length, text: m[2], id: slugify(m[2]) });
-      }
-    }
-
-    if (headings.length < 3) {
-      tocEl.classList.remove('visible');
-      return;
-    }
-
-    tocEl.classList.add('visible');
-    var h = '<h3>目录</h3>';
-    headings.forEach(function (item) {
-      h += '<div class="toc-item toc-h' + item.level + '" data-target="' + item.id + '">' + item.text + '</div>';
     });
-    tocEl.innerHTML = h;
-
-    // 点击跳转
-    var tocItems = tocEl.querySelectorAll('.toc-item');
-    for (var j = 0; j < tocItems.length; j++) {
-      (function (el) {
-        el.addEventListener('click', function () {
-          var target = document.getElementById(el.getAttribute('data-target'));
-          if (target) {
-            target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-          }
-        });
-      })(tocItems[j]);
-    }
-
-    // 滚动高亮
-    contentScroll.addEventListener('scroll', updateTocHighlight);
+    return h;
   }
 
-  function updateTocHighlight() {
-    var items = tocEl.querySelectorAll('.toc-item');
-    if (!items.length) return;
-    var scrollTop = contentScroll.scrollTop + 80;
-    var activeId = null;
-
-    var headings = contentEl.querySelectorAll('h1[id], h2[id], h3[id]');
-    for (var i = 0; i < headings.length; i++) {
-      if (headings[i].offsetTop <= scrollTop) {
-        activeId = headings[i].id;
-      }
-    }
-
-    for (var j = 0; j < items.length; j++) {
-      items[j].classList.toggle('active', items[j].getAttribute('data-target') === activeId);
+  function toggleDir(label) {
+    var children = label.nextElementSibling;
+    var arrow = label.querySelector('.tree-arrow');
+    if (children) {
+      children.classList.toggle('hidden');
+      arrow.style.transform = children.classList.contains('hidden') ? '' : 'rotate(90deg)';
     }
   }
 
-  // ===== 小说面板 =====
-  function renderNovelList() {
+  function filterFileTree() {
+    var val = ($('#file-filter') || {}).value || '';
+    val = val.toLowerCase();
+    $$('#file-tree .tree-file').forEach(function (el) {
+      el.style.display = !val || el.textContent.toLowerCase().includes(val) ? '' : 'none';
+    });
+    if (val) $$('#file-tree .tree-children').forEach(function (el) { el.classList.remove('hidden'); });
+  }
+
+  function buildNovelList() {
+    var container = $('#novel-list');
+    if (!container) return;
     var h = '';
-    VOLUMES.forEach(function (v) {
+    DATA.volumes.forEach(function (vol) {
       h += '<div class="novel-vol">';
-      h += '<div class="novel-vol-header" style="border-left-color:' + v.color + '" data-vol="' + v.id + '">';
-      h += '<span class="vol-arrow open">\u25B6</span>';
-      h += '<span class="vol-name">' + v.id + '：' + v.title + '</span>';
-      h += '<span class="vol-count">' + v.chapters.length + '章</span>';
-      h += '</div>';
-      h += '<div class="novel-chapters" data-vol-chapters="' + v.id + '">';
-      v.chapters.forEach(function (ch) {
-        var fullPath = '小说/' + ch + '.md';
-        var chName = ch.split('/').pop().replace(/_/g, ' ');
-        h += '<div class="novel-ch" data-novel-path="' + fullPath + '">' + chName + '</div>';
+      h += '<div class="novel-vol-header" onclick="APP.toggleNovelVol(this)" style="border-left-color:' + vol.color + '">';
+      h += '<span class="tree-arrow">&#9654;</span> ' + esc(vol.id) + ' · ' + esc(vol.title);
+      h += '<span class="vol-time">' + esc(vol.time) + '</span></div>';
+      h += '<div class="novel-chapters hidden">';
+      vol.chapters.forEach(function (ch) {
+        var fpath = '小说/' + ch + '.md';
+        var name = ch.split('/').pop().replace(/_/g, ' ');
+        var readMark = isRead(fpath) ? '<span class="read-mark">&#10003;</span>' : '';
+        h += '<div class="novel-ch" onclick="APP.openNovelChapter(\'' + esc(ch.replace(/'/g, "\\'")) + '\')">' + readMark + esc(name) + '</div>';
       });
       h += '</div></div>';
     });
-    $('novel-list').innerHTML = h;
+    container.innerHTML = h;
+  }
 
-    // 绑定事件
-    var volHeaders = document.querySelectorAll('.novel-vol-header');
-    for (var i = 0; i < volHeaders.length; i++) {
-      (function (header) {
-        header.addEventListener('click', function () {
-          var volId = header.getAttribute('data-vol');
-          var chapters = document.querySelector('[data-vol-chapters="' + volId + '"]');
-          chapters.classList.toggle('collapsed');
-          header.querySelector('.vol-arrow').classList.toggle('open');
-        });
-      })(volHeaders[i]);
-    }
-
-    var chItems = document.querySelectorAll('.novel-ch');
-    for (var j = 0; j < chItems.length; j++) {
-      (function (el) {
-        el.addEventListener('click', function () {
-          state.novelMode = true;
-          showFile(el.getAttribute('data-novel-path'));
-        });
-      })(chItems[j]);
+  function toggleNovelVol(header) {
+    var chapters = header.nextElementSibling;
+    var arrow = header.querySelector('.tree-arrow');
+    if (chapters) {
+      chapters.classList.toggle('hidden');
+      arrow.style.transform = chapters.classList.contains('hidden') ? '' : 'rotate(90deg)';
     }
   }
 
-  function highlightNovelChapter(path) {
-    var all = document.querySelectorAll('.novel-ch.active');
-    for (var i = 0; i < all.length; i++) all[i].classList.remove('active');
-    if (!path) return;
-    var el = document.querySelector('.novel-ch[data-novel-path="' + CSS.escape(path) + '"]');
-    if (el) el.classList.add('active');
-  }
-
-  function openVolume(volId) {
-    switchTab('novel');
-    // 展开对应卷，折叠其他
-    VOLUMES.forEach(function (v) {
-      var chapters = document.querySelector('[data-vol-chapters="' + v.id + '"]');
-      var header = document.querySelector('.novel-vol-header[data-vol="' + v.id + '"]');
-      if (!chapters || !header) return;
-      if (v.id === volId) {
-        chapters.classList.remove('collapsed');
-        header.querySelector('.vol-arrow').classList.add('open');
-      } else {
-        chapters.classList.add('collapsed');
-        header.querySelector('.vol-arrow').classList.remove('open');
-      }
+  function buildWikiCategories() {
+    var container = $('#wiki-cats');
+    if (!container) return;
+    var h = '';
+    Object.keys(DATA.encyclopedia).forEach(function (cat) {
+      var info = DATA.encyclopedia[cat];
+      h += '<div class="wiki-cat-btn" onclick="APP.showWikiCategory(\'' + esc(cat) + '\')">';
+      h += '<span class="wiki-cat-name">' + esc(cat) + '</span>';
+      h += '<span class="wiki-cat-count">' + info.entries.length + '</span>';
+      h += '</div>';
     });
-    // 打开第一章
-    var vol = VOLUMES.filter(function (v) { return v.id === volId; })[0];
-    if (vol && vol.chapters.length > 0) {
-      state.novelMode = true;
-      showFile('小说/' + vol.chapters[0] + '.md');
-    }
+    container.innerHTML = h;
   }
 
-  // 章节导航
-  function appendChapterNav(path) {
-    var idx = state.allChapters.indexOf(path);
-    if (idx === -1) return;
+  // ═══════════════════════════════════════════
+  // 仪表盘
+  // ═══════════════════════════════════════════
+  function showDashboard() { show($('#dashboard')); renderDashboard(); }
 
-    var prevPath = idx > 0 ? state.allChapters[idx - 1] : null;
-    var nextPath = idx < state.allChapters.length - 1 ? state.allChapters[idx + 1] : null;
-
-    var nav = document.createElement('div');
-    nav.className = 'chapter-nav';
-
-    var prevBtn = '<button class="chapter-nav-btn' + (prevPath ? '' : ' disabled') + '" ' +
-      (prevPath ? 'onclick="APP.navChapter(\'' + prevPath + '\')"' : '') +
-      '>\u2190 上一章</button>';
-
-    var nextBtn = '<button class="chapter-nav-btn' + (nextPath ? '' : ' disabled') + '" ' +
-      (nextPath ? 'onclick="APP.navChapter(\'' + nextPath + '\')"' : '') +
-      '>下一章 \u2192</button>';
-
-    var info = '<span class="chapter-nav-info">' + (idx + 1) + ' / ' + state.allChapters.length + '</span>';
-
-    nav.innerHTML = prevBtn + info + nextBtn;
-    contentEl.appendChild(nav);
+  function renderDashboard() {
+    var el = $('#dashboard');
+    if (!el) return;
+    var h = '';
+    h += '<div class="dash-section"><h2>项目概览</h2><div class="stat-grid">';
+    var mods = DATA.stats.modules;
+    Object.keys(mods).forEach(function (m) {
+      h += '<div class="stat-card"><div class="stat-card-num">' + mods[m].files + '</div><div class="stat-card-label">' + esc(m) + '</div></div>';
+    });
+    h += '</div></div>';
+    h += '<div class="dash-section"><h2>核心角色</h2><div class="char-grid">';
+    DATA.characters.forEach(function (c) {
+      h += '<div class="char-card" onclick="APP.openFile(\'角色/' + esc(c.name) + '.md\')">';
+      h += '<h3>' + esc(c.name) + '</h3>';
+      h += '<p class="char-species">' + esc(c.species) + ' · ' + esc(c.age) + '岁</p>';
+      h += '<p class="char-trait">' + esc(c.trait) + '</p>';
+      h += '<p class="char-relation">' + esc(c.relation) + '</p>';
+      h += '</div>';
+    });
+    h += '</div></div>';
+    h += '<div class="dash-section"><h2>故事</h2><div class="vol-grid">';
+    DATA.volumes.forEach(function (v) {
+      h += '<div class="vol-card" style="border-left-color:' + v.color + '" onclick="APP.switchTab(\'novels\')">';
+      h += '<h3>' + esc(v.id) + ' · ' + esc(v.title) + '</h3>';
+      h += '<p>' + esc(v.subtitle) + '</p>';
+      h += '<span class="vol-meta">' + esc(v.time) + ' · ' + v.chapters.length + '章</span>';
+      h += '</div>';
+    });
+    h += '</div></div>';
+    h += '<div class="dash-section"><h2>世界观</h2><div class="keyword-tags">';
+    DATA.worldKeywords.forEach(function (kw) {
+      h += '<span class="keyword-tag">' + esc(kw) + '</span>';
+    });
+    h += '</div></div>';
+    el.innerHTML = h;
   }
 
-  function navChapter(path) {
-    state.novelMode = true;
+  // ═══════════════════════════════════════════
+  // 文件显示
+  // ═══════════════════════════════════════════
+  function openFile(path) {
+    state.file = path;
+    location.hash = '#file/' + encodeURIComponent(path);
     showFile(path);
   }
 
-  function navPrev() {
-    if (!state.novelMode || !state.currentFile) return;
-    var idx = state.allChapters.indexOf(state.currentFile);
-    if (idx > 0) showFile(state.allChapters[idx - 1]);
+  function showFile(path) {
+    state.file = path;
+    var content = DATA.files[path];
+    if (!content) { $('#file-content').innerHTML = '<p>文件未找到: ' + esc(path) + '</p>'; show($('#file-content')); return; }
+    saveProgress(path, { read: true, lastTime: Date.now() });
+    hide($('#dashboard')); hide($('#timeline-view')); hide($('#wiki-content')); hide($('#character-graph'));
+    show($('#file-content')); show($('#toc'));
+    var parts = path.split('/');
+    var bc = parts.map(function (p) { return '<span class="bc-part">' + esc(p) + '</span>'; }).join(' <span class="bc-sep">/</span> ');
+    $('#breadcrumb').innerHTML = bc;
+    var result = renderMarkdown(content);
+    $('#file-content').innerHTML = '<div class="md-body">' + result.html + '</div>';
+    renderTOC(result.headings);
+    var prog = getProgress()[path];
+    var ct = $('#content');
+    if (prog && prog.scrollPos && ct) ct.scrollTop = prog.scrollPos;
+    else if (ct) ct.scrollTop = 0;
+    if (ct) ct.onscroll = function () { saveProgress(path, { scrollPos: ct.scrollTop }); };
+    if (state.novelMode) { show($('#chapter-nav')); updateChapterNav(); }
   }
 
-  function navNext() {
-    if (!state.novelMode || !state.currentFile) return;
-    var idx = state.allChapters.indexOf(state.currentFile);
-    if (idx >= 0 && idx < state.allChapters.length - 1) showFile(state.allChapters[idx + 1]);
+  // ═══════════════════════════════════════════
+  // Markdown 渲染
+  // ═══════════════════════════════════════════
+  var slugCounts = {};
+  function resetSlugs() { slugCounts = {}; }
+  function slugify(text) {
+    var base = text.replace(/[^\w\u4e00-\u9fff-]/g, '').toLowerCase();
+    if (!base) base = 'heading';
+    if (slugCounts[base]) { slugCounts[base]++; base += '-' + slugCounts[base]; } else { slugCounts[base] = 1; }
+    return base;
   }
 
-  // ===== 搜索 =====
-  var searchInput = $('search-input');
-  var searchResults = $('search-results');
-  var searchStatus = $('search-status');
-  var searchTimeout;
+  function renderMarkdown(src) {
+    resetSlugs();
+    var headings = [];
+    var lines = src.split('\n');
+    var html = '';
+    var inCode = false, codeLines = [];
+    var inTable = false, tableLines = [];
+    var inBlockquote = false, bqLines = [];
+    var inList = false, listLines = [], listOrdered = false;
 
-  searchInput.addEventListener('input', function () {
-    clearTimeout(searchTimeout);
-    searchTimeout = setTimeout(doSearch, 200);
-  });
+    function flushList() { if (!inList) return; html += renderList(listLines, listOrdered); listLines = []; inList = false; }
+    function flushBq() { if (!inBlockquote) return; html += '<blockquote>' + bqLines.map(renderInline).join('<br>') + '</blockquote>'; bqLines = []; inBlockquote = false; }
+    function flushTable() { if (!inTable) return; html += renderTableHTML(tableLines); tableLines = []; inTable = false; }
 
-  function doSearch() {
-    var query = searchInput.value.trim();
-    if (!query) {
-      searchResults.innerHTML = '';
-      searchStatus.textContent = '';
-      return;
-    }
-
-    var queryLower = query.toLowerCase();
-    var results = [];
-
-    for (var path in FILES) {
-      var content = FILES[path];
-      var contentLines = content.split('\n');
-      var matches = [];
-
-      // 文件名匹配
-      var pathMatch = path.toLowerCase().indexOf(queryLower) !== -1;
-
-      // 内容匹配
-      for (var i = 0; i < contentLines.length; i++) {
-        if (contentLines[i].toLowerCase().indexOf(queryLower) !== -1) {
-          matches.push({ line: i + 1, text: contentLines[i] });
-          if (matches.length >= 5) break; // 每文件最多5条
-        }
+    for (var i = 0; i < lines.length; i++) {
+      var line = lines[i];
+      if (line.match(/^```/)) {
+        if (inCode) { html += '<pre><code>' + esc(codeLines.join('\n')) + '</code></pre>'; inCode = false; codeLines = []; }
+        else { flushList(); flushBq(); flushTable(); inCode = true; }
+        continue;
       }
-
-      if (pathMatch || matches.length > 0) {
-        results.push({ path: path, pathMatch: pathMatch, matches: matches });
-      }
+      if (inCode) { codeLines.push(line); continue; }
+      if (!line.trim()) { flushList(); flushBq(); flushTable(); continue; }
+      if (line.trim().startsWith('|')) { flushList(); flushBq(); if (!inTable) inTable = true; tableLines.push(line); continue; } else { flushTable(); }
+      if (line.match(/^>\s?/)) { flushList(); flushTable(); inBlockquote = true; bqLines.push(line.replace(/^>\s?/, '')); continue; } else { flushBq(); }
+      var hm = line.match(/^(#{1,6})\s+(.+)/);
+      if (hm) { flushList(); var lv = hm[1].length; var txt = hm[2].trim(); var sl = slugify(txt); headings.push({ level: lv, text: txt, slug: sl }); html += '<h' + lv + ' id="' + sl + '">' + renderInline(txt) + '</h' + lv + '>'; continue; }
+      if (line.match(/^(-{3,}|\*{3,}|_{3,})\s*$/)) { flushList(); html += '<hr>'; continue; }
+      var ulm = line.match(/^(\s*)[*\-+]\s+(.+)/);
+      var olm = line.match(/^(\s*)\d+\.\s+(.+)/);
+      if (ulm || olm) { flushBq(); flushTable(); if (!inList) { inList = true; listOrdered = !!olm; } listLines.push(line); continue; } else { flushList(); }
+      html += '<p>' + renderInline(line) + '</p>';
     }
+    flushList(); flushBq(); flushTable();
+    if (inCode) html += '<pre><code>' + esc(codeLines.join('\n')) + '</code></pre>';
+    return { html: html, headings: headings };
+  }
 
-    // 路径匹配优先，然后按匹配数排序
-    results.sort(function (a, b) {
-      if (a.pathMatch !== b.pathMatch) return b.pathMatch ? 1 : -1;
-      return b.matches.length - a.matches.length;
+  function renderInline(text) {
+    text = esc(text);
+    text = text.replace(/`([^`]+)`/g, '<code>$1</code>');
+    text = text.replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>');
+    text = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    text = text.replace(/\*(.+?)\*/g, '<em>$1</em>');
+    text = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
+    return text;
+  }
+
+  function renderList(lines, ordered) {
+    var tag = ordered ? 'ol' : 'ul';
+    var h = '<' + tag + '>';
+    lines.forEach(function (line) {
+      var m = line.match(/^(\s*)[*\-+\d.]+\s+(.+)/);
+      if (m) h += '<li>' + renderInline(m[2]) + '</li>';
     });
+    return h + '</' + tag + '>';
+  }
 
-    var totalMatches = results.reduce(function (sum, r) { return sum + r.matches.length; }, 0);
-    searchStatus.textContent = results.length + ' 个文件, ' + totalMatches + ' 处匹配';
+  function renderTableHTML(lines) {
+    if (lines.length < 2) return '';
+    var h = '<table>';
+    lines.forEach(function (line, idx) {
+      if (idx === 1 && line.match(/^\|[\s\-:|]+\|$/)) return;
+      var cells = line.split('|').slice(1, -1);
+      var tag = idx === 0 ? 'th' : 'td';
+      h += '<tr>';
+      cells.forEach(function (c) { h += '<' + tag + '>' + renderInline(c.trim()) + '</' + tag + '>'; });
+      h += '</tr>';
+    });
+    return h + '</table>';
+  }
 
+  function renderTOC(headings) {
+    var list = $('#toc-list');
+    if (!list) return;
+    if (!headings.length) { list.innerHTML = '<p class="toc-empty">无目录</p>'; return; }
     var h = '';
-    results.slice(0, 30).forEach(function (r) {
-      h += '<div class="search-file-group">';
-      h += '<div class="search-file-header" onclick="APP.showFile(\'' + escapeAttr(r.path) + '\')">';
-      h += '<span>' + highlightText(r.path, query) + '</span>';
-      h += '<span class="match-count">' + r.matches.length + '</span>';
-      h += '</div>';
-      r.matches.forEach(function (m) {
-        h += '<div class="search-match" onclick="APP.showFileAtLine(\'' + escapeAttr(r.path) + '\',' + m.line + ')">';
-        h += '<span class="line-num">L' + m.line + '</span>';
-        h += '<span class="line-text">' + highlightText(truncate(m.text.trim(), 80), query) + '</span>';
-        h += '</div>';
+    headings.forEach(function (item) {
+      h += '<a class="toc-item toc-h' + item.level + '" href="#' + item.slug + '" onclick="APP.scrollToHeading(\'' + esc(item.slug) + '\'); return false;">' + esc(item.text) + '</a>';
+    });
+    list.innerHTML = h;
+  }
+
+  function scrollToHeading(slug) {
+    var el = document.getElementById(slug);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function highlightTOC() {
+    var content = $('#content');
+    if (!content) return;
+    var headings = $$('.md-body h1, .md-body h2, .md-body h3, .md-body h4');
+    var scrollTop = content.scrollTop;
+    var current = null;
+    headings.forEach(function (h) { if (h.offsetTop - 80 <= scrollTop) current = h.id; });
+    $$('.toc-item').forEach(function (a) { a.classList.toggle('active', a.getAttribute('href') === '#' + current); });
+  }
+
+  // ═══════════════════════════════════════════
+  // 小说阅读
+  // ═══════════════════════════════════════════
+  function openNovelChapter(chapterPath) {
+    state.novelMode = true;
+    for (var vi = 0; vi < DATA.volumes.length; vi++) {
+      var vol = DATA.volumes[vi];
+      var ci = vol.chapters.indexOf(chapterPath);
+      if (ci >= 0) { state.volume = vi; state.chapter = ci; break; }
+    }
+    var fpath = '小说/' + chapterPath + '.md';
+    location.hash = '#novel/' + encodeURIComponent(chapterPath);
+    showFile(fpath);
+    show($('#chapter-nav'));
+    updateChapterNav();
+  }
+
+  function updateChapterNav() {
+    if (state.volume === null) return;
+    var ci = state.chapter;
+    var allChapters = [];
+    DATA.volumes.forEach(function (v) { v.chapters.forEach(function (c) { allChapters.push(c); }); });
+    var globalIdx = 0;
+    for (var i = 0; i < state.volume; i++) globalIdx += DATA.volumes[i].chapters.length;
+    globalIdx += ci;
+    var prog = $('#chapter-progress');
+    if (prog) prog.textContent = (globalIdx + 1) + ' / ' + allChapters.length;
+    var pb = $('#prev-chapter'); if (pb) pb.disabled = globalIdx === 0;
+    var nb = $('#next-chapter'); if (nb) nb.disabled = globalIdx === allChapters.length - 1;
+  }
+
+  function navChapter(dir) {
+    if (!state.novelMode) return;
+    var allChapters = [];
+    DATA.volumes.forEach(function (v) { v.chapters.forEach(function (c) { allChapters.push(c); }); });
+    var globalIdx = 0;
+    for (var i = 0; i < state.volume; i++) globalIdx += DATA.volumes[i].chapters.length;
+    globalIdx += state.chapter;
+    var newIdx = globalIdx + dir;
+    if (newIdx < 0 || newIdx >= allChapters.length) return;
+    openNovelChapter(allChapters[newIdx]);
+  }
+
+  // ═══════════════════════════════════════════
+  // 阅读模式
+  // ═══════════════════════════════════════════
+  function toggleReadingMode() {
+    var overlay = $('#reading-overlay');
+    if (!overlay) return;
+    if (overlay.classList.contains('hidden')) openReading(); else closeReading();
+  }
+  function openReading() {
+    if (!state.file) return;
+    var content = DATA.files[state.file];
+    if (!content) return;
+    var result = renderMarkdown(content);
+    $('#reading-body').innerHTML = '<div class="md-body">' + result.html + '</div>';
+    $('#reading-title').textContent = state.file.split('/').pop().replace('.md', '');
+    show($('#reading-overlay'));
+  }
+  function closeReading() { hide($('#reading-overlay')); }
+
+  // ═══════════════════════════════════════════
+  // 搜索
+  // ═══════════════════════════════════════════
+  function doSearch() {
+    var input = $('#search-input');
+    var results = $('#search-results');
+    if (!input || !results) return;
+    var q = input.value.trim().toLowerCase();
+    if (!q) { results.innerHTML = ''; return; }
+    var matches = [];
+    Object.keys(DATA.files).forEach(function (path) {
+      var nameMatch = path.toLowerCase().includes(q);
+      var content = DATA.files[path];
+      var lines = content.split('\n');
+      var lineMatches = [];
+      for (var i = 0; i < lines.length && lineMatches.length < 3; i++) {
+        if (lines[i].toLowerCase().includes(q)) lineMatches.push({ num: i + 1, text: lines[i] });
+      }
+      if (nameMatch || lineMatches.length) matches.push({ path: path, nameMatch: nameMatch, lines: lineMatches });
+    });
+    matches.sort(function (a, b) { return (b.nameMatch ? 1 : 0) - (a.nameMatch ? 1 : 0); });
+    matches = matches.slice(0, 30);
+    var h = '<div class="search-count">找到 ' + matches.length + ' 个结果</div>';
+    matches.forEach(function (m) {
+      h += '<div class="search-item" onclick="APP.openFile(\'' + esc(m.path.replace(/'/g, "\\'")) + '\')">';
+      h += '<div class="search-path">' + highlightText(m.path, q) + '</div>';
+      m.lines.forEach(function (l) {
+        h += '<div class="search-line"><span class="line-num">' + l.num + '</span> ' + highlightText(truncate(l.text, 100), q) + '</div>';
       });
       h += '</div>';
     });
+    results.innerHTML = h;
+  }
+  function highlightText(text, q) {
+    var escaped = esc(text);
+    var regex = new RegExp('(' + q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'gi');
+    return escaped.replace(regex, '<mark>$1</mark>');
+  }
+  function truncate(s, len) { return s.length > len ? s.slice(0, len) + '...' : s; }
 
-    if (results.length === 0) {
-      h = '<div class="empty-state"><p>未找到匹配结果</p></div>';
+  // ═══════════════════════════════════════════
+  // 角色关系图谱 (Canvas 2D)
+  // ═══════════════════════════════════════════
+  var graphState = { nodes: [], edges: [], dragging: null, offset: { x: 0, y: 0 }, scale: 1, hover: null, animId: null };
+  var GROUP_COLORS = { core: '#c41e3a', scb: '#4a90d9', baigui: '#5a9e6f', qingqiu: '#d4a574', enemy: '#7a5ea7', friend: '#d4748a', school: '#5ab5b0' };
+  var EDGE_COLORS = { love: '#c41e3a', family: '#d4a574', friend: '#5a9e6f', enemy: '#7a5ea7', ally: '#4a90d9', neutral: '#888' };
+
+  function showCharGraph() {
+    show($('#character-graph'));
+    var canvas = $('#graph-canvas');
+    if (!canvas) return;
+    var container = $('#character-graph');
+    canvas.width = container.clientWidth || 800;
+    canvas.height = container.clientHeight || 600;
+    if (!graphState.nodes.length) initGraph(canvas);
+    if (!graphState.animId) animateGraph(canvas);
+  }
+
+  function initGraph(canvas) {
+    var W = canvas.width, H = canvas.height;
+    var cx = W / 2, cy = H / 2;
+    graphState.nodes = DATA.relationships.nodes.map(function (n, i) {
+      var angle = (i / DATA.relationships.nodes.length) * Math.PI * 2;
+      var r = n.group === 'core' ? 60 : 180;
+      return { id: n.id, group: n.group, species: n.species, desc: n.desc,
+        x: cx + Math.cos(angle) * r + (Math.random() - 0.5) * 40,
+        y: cy + Math.sin(angle) * r + (Math.random() - 0.5) * 40,
+        vx: 0, vy: 0, radius: n.group === 'core' ? 28 : 20 };
+    });
+    graphState.edges = DATA.relationships.edges.slice();
+    canvas.addEventListener('mousedown', graphMouseDown);
+    canvas.addEventListener('mousemove', graphMouseMove);
+    canvas.addEventListener('mouseup', graphMouseUp);
+    canvas.addEventListener('wheel', graphWheel, { passive: false });
+    canvas.addEventListener('click', graphClick);
+  }
+
+  function findNodeAt(x, y) {
+    var nodes = graphState.nodes;
+    for (var i = nodes.length - 1; i >= 0; i--) {
+      var n = nodes[i];
+      var nx = (x - graphState.offset.x) / graphState.scale;
+      var ny = (y - graphState.offset.y) / graphState.scale;
+      var dx = nx - n.x, dy = ny - n.y;
+      if (dx * dx + dy * dy < n.radius * n.radius) return n;
     }
-
-    searchResults.innerHTML = h;
+    return null;
   }
 
-  function highlightText(text, query) {
-    if (!query) return escapeHtml(text);
-    var escaped = escapeHtml(text);
-    var queryEscaped = escapeHtml(query);
-    var re = new RegExp('(' + queryEscaped.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'gi');
-    return escaped.replace(re, '<mark>$1</mark>');
+  function graphMouseDown(e) {
+    var rect = e.target.getBoundingClientRect();
+    var node = findNodeAt(e.clientX - rect.left, e.clientY - rect.top);
+    if (node) { graphState.dragging = node; node.vx = 0; node.vy = 0; }
   }
-
-  function truncate(str, len) {
-    return str.length > len ? str.substring(0, len) + '...' : str;
-  }
-
-  function escapeAttr(str) {
-    return str.replace(/'/g, "\\'").replace(/"/g, '&quot;');
-  }
-
-  function showFileAtLine(path, line) {
-    showFile(path);
-    // 尝试滚动到对应行 (近似)
-    setTimeout(function () {
-      var allP = contentEl.querySelectorAll('p, li, h1, h2, h3, h4, tr, blockquote');
-      if (line - 1 < allP.length) {
-        allP[Math.max(0, line - 2)].scrollIntoView({ behavior: 'smooth', block: 'center' });
-      }
-    }, 100);
-  }
-
-  // ===== 阅读模式 =====
-  function openReading() {
-    if (!state.currentFile) return;
-    var content = FILES[state.currentFile];
-    if (!content) return;
-
-    state.readingMode = true;
-    readingTitle.textContent = state.currentFile.split('/').pop();
-    resetSlugs();
-    readingBody.innerHTML = renderMarkdown(content);
-    readingOverlay.classList.add('active');
-    readingOverlay.scrollTop = 0;
-  }
-
-  function closeReading() {
-    state.readingMode = false;
-    readingOverlay.classList.remove('active');
-  }
-
-  // ===== 快捷键帮助 =====
-  function showShortcuts() {
-    shortcutsModal.classList.add('active');
-  }
-  function hideShortcuts() {
-    shortcutsModal.classList.remove('active');
-  }
-  shortcutsModal.addEventListener('click', function (e) {
-    if (e.target === shortcutsModal) hideShortcuts();
-  });
-
-  // ===== URL Hash 路由 =====
-  function updateHash(hash) {
-    if (history.replaceState) {
-      history.replaceState(null, '', hash ? '#' + hash : window.location.pathname);
+  function graphMouseMove(e) {
+    var rect = e.target.getBoundingClientRect();
+    var x = e.clientX - rect.left, y = e.clientY - rect.top;
+    if (graphState.dragging) {
+      graphState.dragging.x = (x - graphState.offset.x) / graphState.scale;
+      graphState.dragging.y = (y - graphState.offset.y) / graphState.scale;
     }
+    graphState.hover = findNodeAt(x, y);
+    e.target.style.cursor = graphState.hover ? 'pointer' : 'default';
+  }
+  function graphMouseUp() { graphState.dragging = null; }
+  function graphWheel(e) { e.preventDefault(); var d = e.deltaY > 0 ? 0.9 : 1.1; graphState.scale = Math.max(0.3, Math.min(3, graphState.scale * d)); }
+  function graphClick(e) {
+    if (graphState.dragging) return;
+    var rect = e.target.getBoundingClientRect();
+    var node = findNodeAt(e.clientX - rect.left, e.clientY - rect.top);
+    if (node) showCharDetail(node);
   }
 
-  function handleHash() {
-    var hash = window.location.hash.slice(1);
-    if (!hash) {
-      showDashboard();
-      return;
-    }
+  function animateGraph(canvas) {
+    var ctx = canvas.getContext('2d');
+    var nodes = graphState.nodes;
+    var edges = graphState.edges;
+    function nodeById(id) { return nodes.find(function (n) { return n.id === id; }); }
 
-    if (hash.indexOf('file/') === 0) {
-      var path = decodeURIComponent(hash.slice(5));
-      if (FILES[path]) {
-        // 判断是否小说
-        if (path.indexOf('小说/') === 0) {
-          state.novelMode = true;
-          switchTab('novel');
-        } else {
-          switchTab('files');
+    function step() {
+      var damping = 0.85, repulsion = 3000, springLen = 150, springK = 0.01, centerK = 0.002;
+      var cx = canvas.width / 2 / graphState.scale, cy = canvas.height / 2 / graphState.scale;
+      for (var i = 0; i < nodes.length; i++) {
+        for (var j = i + 1; j < nodes.length; j++) {
+          var dx = nodes[i].x - nodes[j].x, dy = nodes[i].y - nodes[j].y;
+          var dist = Math.sqrt(dx * dx + dy * dy) || 1;
+          var f = repulsion / (dist * dist);
+          nodes[i].vx += (dx / dist) * f; nodes[i].vy += (dy / dist) * f;
+          nodes[j].vx -= (dx / dist) * f; nodes[j].vy -= (dy / dist) * f;
         }
-        showFile(path);
-      } else {
-        showDashboard();
       }
-    } else if (hash.indexOf('novel/') === 0) {
-      var volId = decodeURIComponent(hash.slice(6));
-      openVolume(volId);
-    } else if (hash.indexOf('search/') === 0) {
-      var query = decodeURIComponent(hash.slice(7));
-      switchTab('search');
-      searchInput.value = query;
-      doSearch();
-    } else {
-      showDashboard();
+      edges.forEach(function (e) {
+        var s = nodeById(e.source), t = nodeById(e.target);
+        if (!s || !t) return;
+        var dx = t.x - s.x, dy = t.y - s.y;
+        var dist = Math.sqrt(dx * dx + dy * dy) || 1;
+        var f = (dist - springLen) * springK;
+        s.vx += (dx / dist) * f; s.vy += (dy / dist) * f;
+        t.vx -= (dx / dist) * f; t.vy -= (dy / dist) * f;
+      });
+      nodes.forEach(function (n) {
+        if (n === graphState.dragging) return;
+        n.vx += (cx - n.x) * centerK; n.vy += (cy - n.y) * centerK;
+        n.vx *= damping; n.vy *= damping;
+        n.x += n.vx; n.y += n.vy;
+      });
+
+      var isDark = state.theme === 'dark';
+      var bgColor = isDark ? '#1a1a2e' : '#f5f0e8';
+      var textColor = isDark ? '#e8dcc8' : '#2c2c2c';
+      var labelColor = isDark ? '#9a8c78' : '#6b6b6b';
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = bgColor; ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.save();
+      ctx.translate(graphState.offset.x, graphState.offset.y);
+      ctx.scale(graphState.scale, graphState.scale);
+
+      edges.forEach(function (e) {
+        var s = nodeById(e.source), t = nodeById(e.target);
+        if (!s || !t) return;
+        ctx.beginPath();
+        ctx.strokeStyle = EDGE_COLORS[e.type] || '#888';
+        ctx.lineWidth = (e.type === 'love' || e.type === 'family') ? 2.5 : 1.5;
+        if (e.type === 'enemy') ctx.setLineDash([5, 5]); else ctx.setLineDash([]);
+        ctx.moveTo(s.x, s.y); ctx.lineTo(t.x, t.y); ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.font = '10px sans-serif'; ctx.fillStyle = labelColor; ctx.textAlign = 'center';
+        ctx.fillText(e.label, (s.x + t.x) / 2, (s.y + t.y) / 2 - 5);
+      });
+
+      nodes.forEach(function (n) {
+        var isHover = graphState.hover === n;
+        ctx.beginPath(); ctx.arc(n.x, n.y, n.radius, 0, Math.PI * 2);
+        ctx.fillStyle = GROUP_COLORS[n.group] || '#888';
+        if (isHover) { ctx.shadowColor = GROUP_COLORS[n.group]; ctx.shadowBlur = 15; }
+        ctx.fill(); ctx.shadowBlur = 0;
+        ctx.strokeStyle = isHover ? '#fff' : (isDark ? '#333' : '#ddd');
+        ctx.lineWidth = isHover ? 3 : 1.5; ctx.stroke();
+        ctx.font = (n.group === 'core' ? 'bold 14px' : '12px') + ' sans-serif';
+        ctx.fillStyle = textColor; ctx.textAlign = 'center';
+        ctx.fillText(n.id, n.x, n.y + n.radius + 16);
+      });
+      ctx.restore();
+      graphState.animId = requestAnimationFrame(step);
     }
+    step();
   }
 
-  window.addEventListener('hashchange', handleHash);
-
-  // ===== 键盘快捷键 =====
-  document.addEventListener('keydown', function (e) {
-    // 忽略输入框中的按键 (除了 Esc)
-    var isInput = e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA';
-
-    if (e.key === 'Escape') {
-      e.preventDefault();
-      if (state.readingMode) { closeReading(); return; }
-      if (shortcutsModal.classList.contains('active')) { hideShortcuts(); return; }
-      if (isInput) { e.target.blur(); return; }
-      showDashboard();
-      switchTab('home');
-      return;
-    }
-
-    if (isInput) return;
-
-    if (e.key === '/' || (e.ctrlKey && e.key === 'k')) {
-      e.preventDefault();
-      switchTab('search');
-      return;
-    }
-
-    if (e.key === '?' && !e.ctrlKey && !e.altKey) {
-      e.preventDefault();
-      showShortcuts();
-      return;
-    }
-
-    if (e.ctrlKey && e.key === 'r') {
-      e.preventDefault();
-      if (state.readingMode) closeReading();
-      else openReading();
-      return;
-    }
-
-    if (e.key === 'ArrowLeft') {
-      if (state.novelMode) { e.preventDefault(); navPrev(); }
-      return;
-    }
-    if (e.key === 'ArrowRight') {
-      if (state.novelMode) { e.preventDefault(); navNext(); }
-      return;
-    }
-  });
-
-  // ===== 初始化 =====
-  renderHomeSidebar();
-  renderTree(TREE, $('tree-container'), '');
-  renderNovelList();
-
-  // 处理初始 hash
-  if (window.location.hash) {
-    handleHash();
-  } else {
-    showDashboard();
+  function highlightNode(name) {
+    var node = graphState.nodes.find(function (n) { return n.id === name; });
+    if (node) showCharDetail(node);
   }
 
-  // ===== 暴露全局 API =====
+  function showCharDetail(node) {
+    $('#char-detail-name').textContent = node.id;
+    $('#char-detail-species').textContent = node.species;
+    $('#char-detail-desc').textContent = node.desc;
+    var rels = graphState.edges.filter(function (e) { return e.source === node.id || e.target === node.id; });
+    var h = '<h4>关系</h4>';
+    rels.forEach(function (r) {
+      var other = r.source === node.id ? r.target : r.source;
+      h += '<div class="char-rel-item"><span class="rel-name">' + esc(other) + '</span><span class="rel-label">' + esc(r.label) + '</span></div>';
+    });
+    $('#char-detail-relations').innerHTML = h;
+    show($('#char-detail-modal'));
+  }
+
+  // ═══════════════════════════════════════════
+  // 时间线
+  // ═══════════════════════════════════════════
+  function showTimelineView() { show($('#timeline-view')); renderTimeline('all'); }
+
+  function renderTimeline(vol) {
+    var el = $('#timeline-view');
+    if (!el) return;
+    var events = DATA.timeline;
+    if (vol && vol !== 'all') events = events.filter(function (e) { return e.vol === vol; });
+    var h = '<div class="timeline-container">';
+    events.forEach(function (evt) {
+      var typeClass = 'tl-' + (evt.type || 'normal');
+      var volColor = '';
+      DATA.volumes.forEach(function (v) { if (v.id === evt.vol) volColor = v.color; });
+      var clickAttr = evt.chapter ? ' onclick="APP.openNovelChapter(\'' + esc(evt.chapter.replace(/'/g, "\\'")) + '\')"' : '';
+      var clickClass = evt.chapter ? ' clickable' : '';
+      h += '<div class="tl-event ' + typeClass + clickClass + '"' + clickAttr + '>';
+      h += '<div class="tl-dot" style="background:' + (volColor || 'var(--accent)') + '"></div>';
+      h += '<div class="tl-line"></div>';
+      h += '<div class="tl-card">';
+      h += '<div class="tl-time">' + esc(evt.time) + '</div>';
+      h += '<div class="tl-vol-tag" style="color:' + (volColor || 'var(--text-secondary)') + '">' + esc(evt.vol) + '</div>';
+      h += '<div class="tl-text">' + esc(evt.event) + '</div>';
+      h += '</div></div>';
+    });
+    h += '</div>';
+    el.innerHTML = h;
+  }
+
+  // ═══════════════════════════════════════════
+  // 世界观百科
+  // ═══════════════════════════════════════════
+  function renderWikiHome() {
+    var el = $('#wiki-content');
+    if (!el) return;
+    var h = '<div class="wiki-home"><h2>世界观百科</h2><div class="wiki-cat-grid">';
+    Object.keys(DATA.encyclopedia).forEach(function (cat) {
+      var info = DATA.encyclopedia[cat];
+      h += '<div class="wiki-cat-card" onclick="APP.showWikiCategory(\'' + esc(cat) + '\')">';
+      h += '<h3>' + esc(cat) + '</h3><p>' + esc(info.desc) + '</p>';
+      h += '<span class="wiki-count">' + info.entries.length + ' 篇</span></div>';
+    });
+    h += '</div></div>';
+    el.innerHTML = h;
+  }
+
+  function showWikiCategory(cat) {
+    location.hash = '#wiki/' + encodeURIComponent(cat);
+    show($('#wiki-content'));
+    hide($('#dashboard')); hide($('#file-content')); hide($('#timeline-view')); hide($('#character-graph'));
+    var info = DATA.encyclopedia[cat];
+    if (!info) return;
+    var el = $('#wiki-content');
+    var h = '<div class="wiki-category">';
+    h += '<a class="wiki-back" onclick="APP.renderWikiHome()">&larr; 返回百科</a>';
+    h += '<h2>' + esc(cat) + '</h2><p class="wiki-cat-desc">' + esc(info.desc) + '</p>';
+    h += '<div class="wiki-entries">';
+    info.entries.forEach(function (entry) {
+      h += '<div class="wiki-entry" onclick="APP.openFile(\'' + esc(entry.file.replace(/'/g, "\\'")) + '\')">';
+      h += '<h3>' + esc(entry.title) + '</h3><p>' + esc(entry.summary) + '</p></div>';
+    });
+    h += '</div></div>';
+    el.innerHTML = h;
+  }
+
+  // ═══════════════════════════════════════════
+  // 弹窗与键盘
+  // ═══════════════════════════════════════════
+  function toggleModal(id) { var el = $('#' + id); if (el) el.classList.toggle('hidden'); }
+
+  function handleKey(e) {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') { if (e.key === 'Escape') e.target.blur(); return; }
+    if (e.key === '/' || (e.ctrlKey && e.key === 'k')) { e.preventDefault(); switchTab('search'); var si = $('#search-input'); if (si) si.focus(); }
+    else if (e.key === 'Escape') {
+      if (!$('#reading-overlay').classList.contains('hidden')) { closeReading(); return; }
+      if (!$('#help-modal').classList.contains('hidden')) { hide($('#help-modal')); return; }
+      if (!$('#char-detail-modal').classList.contains('hidden')) { hide($('#char-detail-modal')); return; }
+      document.body.classList.remove('sidebar-open');
+      location.hash = '';
+    }
+    else if (e.key === 'ArrowLeft') navChapter(-1);
+    else if (e.key === 'ArrowRight') navChapter(1);
+    else if (e.ctrlKey && e.key === 'r') { e.preventDefault(); toggleReadingMode(); }
+    else if (e.key === '?') toggleModal('help-modal');
+  }
+
+  // ═══════════════════════════════════════════
+  // 公开 API
+  // ═══════════════════════════════════════════
   window.APP = {
-    showFile: showFile,
-    showFileAtLine: showFileAtLine,
-    showCharacter: showCharacter,
-    openVolume: openVolume,
-    navChapter: navChapter,
-    openReading: openReading,
-    closeReading: closeReading,
+    openFile: openFile, toggleDir: toggleDir, toggleNovelVol: toggleNovelVol,
+    openNovelChapter: openNovelChapter, switchTab: switchTab, scrollToHeading: scrollToHeading,
+    showWikiCategory: showWikiCategory, renderWikiHome: renderWikiHome,
+    navChapter: navChapter, openReading: openReading, closeReading: closeReading,
   };
 
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+  else init();
 })();

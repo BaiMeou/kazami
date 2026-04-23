@@ -1,115 +1,135 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AIbot 项目浏览器</title>
-<link rel="stylesheet" href="style.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AIbot — 风见市物语</title>
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-<div id="app">
   <!-- 侧边栏 -->
-  <div id="sidebar">
-    <div class="sidebar-brand">
-      <h1>AIbot</h1>
-      <div class="subtitle">AI 角色扮演 + 世界观构建项目</div>
+  <aside id="sidebar">
+    <div class="sidebar-header">
+      <h1 class="logo">AIbot</h1>
+      <p class="logo-sub">风见市物语</p>
     </div>
-
-    <div class="tab-nav">
-      <button class="tab-btn active" data-tab="home">
-        <span class="tab-icon">&#9751;</span>
-        <span>首页</span>
-      </button>
-      <button class="tab-btn" data-tab="files">
-        <span class="tab-icon">&#128193;</span>
-        <span>文件</span>
-      </button>
-      <button class="tab-btn" data-tab="novel">
-        <span class="tab-icon">&#128214;</span>
-        <span>小说</span>
-      </button>
-      <button class="tab-btn" data-tab="search">
-        <span class="tab-icon">&#128269;</span>
-        <span>搜索</span>
-      </button>
-    </div>
-
-    <!-- 首页面板 -->
-    <div class="tab-panel active" id="panel-home">
-      <div class="home-panel" id="home-content"></div>
-    </div>
-
-    <!-- 文件面板 -->
-    <div class="tab-panel" id="panel-files">
-      <div class="file-filter">
-        <input type="text" id="file-filter-input" placeholder="过滤文件名..." />
+    <nav class="sidebar-tabs">
+      <button data-tab="home" class="tab-btn active">首页</button>
+      <button data-tab="files" class="tab-btn">文件</button>
+      <button data-tab="novels" class="tab-btn">小说</button>
+      <button data-tab="characters" class="tab-btn">人物</button>
+      <button data-tab="timeline" class="tab-btn">时间线</button>
+      <button data-tab="wiki" class="tab-btn">百科</button>
+      <button data-tab="search" class="tab-btn">搜索</button>
+    </nav>
+    <div class="sidebar-panels">
+      <div id="panel-home" class="panel active"></div>
+      <div id="panel-files" class="panel">
+        <input type="text" id="file-filter" placeholder="筛选文件..." />
+        <div id="file-tree"></div>
       </div>
-      <div class="tree-wrap" id="tree-container"></div>
-    </div>
-
-    <!-- 小说面板 -->
-    <div class="tab-panel" id="panel-novel">
-      <div class="novel-panel" id="novel-list"></div>
-    </div>
-
-    <!-- 搜索面板 -->
-    <div class="tab-panel search-panel" id="panel-search">
-      <div class="search-input-wrap">
-        <input type="text" id="search-input" placeholder="搜索文件名或内容..." />
-        <div class="search-status" id="search-status"></div>
+      <div id="panel-novels" class="panel">
+        <div id="novel-list"></div>
       </div>
-      <div class="search-results" id="search-results"></div>
+      <div id="panel-characters" class="panel">
+        <p class="panel-hint">点击节点查看详情</p>
+      </div>
+      <div id="panel-timeline" class="panel">
+        <div class="timeline-filters">
+          <button class="tl-filter active" data-vol="all">全部</button>
+          <button class="tl-filter" data-vol="前传">前传</button>
+          <button class="tl-filter" data-vol="卷一">卷一</button>
+          <button class="tl-filter" data-vol="卷二">卷二</button>
+          <button class="tl-filter" data-vol="卷三">卷三</button>
+          <button class="tl-filter" data-vol="卷四">卷四</button>
+        </div>
+      </div>
+      <div id="panel-wiki" class="panel">
+        <div class="wiki-categories" id="wiki-cats"></div>
+      </div>
+      <div id="panel-search" class="panel">
+        <input type="text" id="search-input" placeholder="全文搜索..." />
+        <div id="search-results"></div>
+      </div>
     </div>
-  </div>
+  </aside>
+
+  <!-- 移动端汉堡菜单 -->
+  <button id="mobile-menu-btn" aria-label="菜单">&#9776;</button>
+  <div id="sidebar-overlay"></div>
 
   <!-- 主内容区 -->
-  <div id="main">
-    <div class="content-header" id="content-header">
-      <div class="breadcrumb" id="breadcrumb"></div>
-      <div class="header-actions" id="header-actions"></div>
-    </div>
-    <div class="content-body">
-      <div id="content-scroll">
-        <div id="content"></div>
+  <main id="main">
+    <header id="topbar">
+      <div id="breadcrumb"></div>
+      <div class="topbar-actions">
+        <button id="btn-font-size" title="字体大小">文</button>
+        <button id="btn-theme" title="切换主题">&#9790;</button>
+        <button id="btn-reading-mode" title="阅读模式">&#9745;</button>
+        <button id="btn-help" title="快捷键 (?)">?</button>
       </div>
-      <div id="toc"></div>
+    </header>
+
+    <div id="content">
+      <div id="dashboard"></div>
+      <div id="file-content" class="hidden"></div>
+      <div id="timeline-view" class="hidden"></div>
+      <div id="wiki-content" class="hidden"></div>
+      <div id="character-graph" class="hidden">
+        <canvas id="graph-canvas"></canvas>
+      </div>
+    </div>
+
+    <aside id="toc">
+      <h3>目录</h3>
+      <div id="toc-list"></div>
+    </aside>
+  </main>
+
+  <!-- 阅读模式覆盖层 -->
+  <div id="reading-overlay" class="hidden">
+    <div class="reading-header">
+      <span id="reading-title"></span>
+      <button id="reading-close">&times;</button>
+    </div>
+    <div id="reading-body"></div>
+  </div>
+
+  <!-- 小说章节导航条 -->
+  <div id="chapter-nav" class="hidden">
+    <button id="prev-chapter">上一章</button>
+    <span id="chapter-progress"></span>
+    <button id="next-chapter">下一章</button>
+  </div>
+
+  <!-- 快捷键帮助弹窗 -->
+  <div id="help-modal" class="hidden">
+    <div class="modal-content">
+      <h3>快捷键</h3>
+      <table>
+        <tr><td><kbd>/</kbd></td><td>搜索</td></tr>
+        <tr><td><kbd>Esc</kbd></td><td>返回</td></tr>
+        <tr><td><kbd>← →</kbd></td><td>上/下一章</td></tr>
+        <tr><td><kbd>Ctrl+R</kbd></td><td>阅读模式</td></tr>
+        <tr><td><kbd>?</kbd></td><td>帮助</td></tr>
+      </table>
+      <button class="modal-close">&times;</button>
     </div>
   </div>
-</div>
 
-<!-- 阅读模式遮罩 -->
-<div id="reading-overlay">
-  <div class="reading-toolbar">
-    <span class="rt-title" id="reading-title"></span>
-    <button class="rt-close" onclick="APP.closeReading()">关闭 (Esc)</button>
+  <!-- 角色详情弹窗 -->
+  <div id="char-detail-modal" class="hidden">
+    <div class="modal-content char-detail">
+      <button class="modal-close">&times;</button>
+      <h3 id="char-detail-name"></h3>
+      <p id="char-detail-species" class="char-species"></p>
+      <p id="char-detail-desc"></p>
+      <div id="char-detail-relations"></div>
+    </div>
   </div>
-  <div class="reading-body md-content" id="reading-body"></div>
-</div>
 
-<!-- 快捷键帮助 -->
-<div id="shortcuts-modal">
-  <div class="shortcuts-content">
-    <h2>键盘快捷键</h2>
-    <table>
-      <tr><td><kbd>/</kbd> <kbd>Ctrl+K</kbd></td><td>聚焦搜索</td></tr>
-      <tr><td><kbd>Esc</kbd></td><td>关闭弹窗 / 返回首页</td></tr>
-      <tr><td><kbd>&larr;</kbd> <kbd>&rarr;</kbd></td><td>上/下一章（小说模式）</td></tr>
-      <tr><td><kbd>Ctrl+R</kbd></td><td>阅读模式</td></tr>
-      <tr><td><kbd>?</kbd></td><td>显示此帮助</td></tr>
-    </table>
-  </div>
-</div>
-
-<!-- 快捷键提示栏 -->
-<div id="shortcut-bar">
-  <span class="shortcut-hint"><kbd>/</kbd> 搜索</span>
-  <span class="shortcut-hint"><kbd>Ctrl+R</kbd> 阅读模式</span>
-  <span class="shortcut-hint"><kbd>?</kbd> 快捷键</span>
-</div>
-
-<script src="data.js"></script>
-<script src="app.js"></script>
-
+  <script src="data.js"></script>
+  <script src="app.js"></script>
 </body>
 </html>
