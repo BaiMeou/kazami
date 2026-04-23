@@ -391,14 +391,9 @@ body.sidebar-collapsed .sidebar-panels {
   pointer-events: none;
 }
 
+/* Panel visibility is controlled by Vue v-show; no display:none here */
 .panel {
-  display: none;
   padding: 8px 4px;
-}
-
-.panel.active {
-  display: block;
-  animation: fadeIn var(--duration) var(--ease);
 }
 
 .panel-hint {
