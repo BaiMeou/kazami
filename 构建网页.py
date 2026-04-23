@@ -172,9 +172,9 @@ FACTIONS = {
     "意识形态": {
         "color": "#7a5ea7",
         "members": [
-            {"name": "猫盟", "leader": "铃", "desc": "猫又文化联盟", "type": "nekomata"},
+            {"name": "猫盟", "leader": "静", "desc": "猫又文化联盟，文化保护", "type": "nekomata"},
             {"name": "夜冠", "leader": "夜冠", "desc": "激进派，融合古神残骸", "type": "enemy"},
-            {"name": "织网者", "leader": "织川绫", "desc": "信息操控者，暗中编织叙事", "type": "weaver"},
+            {"name": "织网者", "leader": "透", "desc": "认知滤网维护者，超然中立", "type": "weaver"},
         ],
     },
 }
@@ -200,24 +200,32 @@ RELATIONSHIPS = {
         # 百鬼联盟
         {"id": "千翼", "group": "baigui", "species": "大天狗（女）", "desc": "百鬼联盟执法派领袖，铁血军师"},
         {"id": "纸伞", "group": "baigui", "species": "唐伞妖", "desc": "百鬼联盟联络官，夜市管理者"},
-        {"id": "墨涟", "group": "baigui", "species": "河童（女）", "desc": "百鬼联盟文书官，精密记录者"},
+        {"id": "墨涟", "group": "baigui", "species": "半天狗（女）", "desc": "百鬼联盟执法队副手，千翼的左右手"},
         {"id": "翎羽", "group": "baigui", "species": "鸦天狗", "desc": "快递员，千翼的远亲，飞行技术及格线以下"},
         # 青丘控股
         {"id": "九阙", "group": "qingqiu", "species": "千年天狐（女）", "desc": "青丘控股CEO，晓光的祖母"},
         {"id": "霜月", "group": "qingqiu", "species": "九尾狐（女）", "desc": "九阙的贴身侍女，气息消匿术大师"},
         # 山岚商会
-        {"id": "叶月", "group": "sanran", "species": "化狸（女）", "desc": "山岚商会少当家，精明强势的商人"},
+        {"id": "叶月", "group": "sanran", "species": "化狸八尾（女）", "desc": "山岚商会会长，九阙的商业对手"},
+        {"id": "铃", "group": "sanran", "species": "狢（女）", "desc": "山岚风见支部长，叶月养女，晓光的新朋友"},
         # 猫又联盟
         {"id": "红绡", "group": "nekomata", "species": "二尾猫又", "desc": "甜品店偶遇的好友"},
-        {"id": "铃", "group": "nekomata", "species": "猫又（女）", "desc": "猫盟成员，流浪猫又，旧时光书店常客"},
+        {"id": "静", "group": "nekomata", "species": "古猫又（女）", "desc": "猫又文化联盟理事长，灵声能力"},
+        {"id": "绒羽", "group": "nekomata", "species": "猫又（女）", "desc": "甜心猫烘焙坊老板，猫盟风见市代表"},
         # 土御门
         {"id": "土御门·澄夜", "group": "tsuchimikado", "species": "阴阳师后裔（女）", "desc": "风见学园学生，发现晓光身份"},
+        # 皇甫医族
+        {"id": "青栀", "group": "huangfu", "species": "人类修真者（女）", "desc": "回春堂风见分店长，皇甫家风见代表"},
+        # 土御门宗家
+        {"id": "土御门·暁", "group": "tsuchimikado", "species": "人类阴阳师", "desc": "土御门家第十八代当主，澄夜之父"},
+        # 织网者
+        {"id": "紬", "group": "weaver", "species": "蜘蛛精（女）", "desc": "风见市副织手，和服修补店老板"},
         # 敌对
         {"id": "夜冠", "group": "enemy", "species": "未知", "desc": "激进派首领，融合古神残骸"},
-        {"id": "灰鸦", "group": "enemy", "species": "混血鸦天狗", "desc": "夜冠部下，被控制的混血少年"},
+        {"id": "灰鸦", "group": "enemy", "species": "混血鸦天狗", "desc": "夜冠执行人，被仇恨驯养的人形武器"},
         # 中立
         {"id": "丁老板", "group": "neutral", "species": "河童", "desc": "旧时光二手书店店主，活了两百年的中立老居民"},
-        {"id": "玄鱼", "group": "neutral", "species": "鲶鱼精", "desc": "夜市摆摊的鲶鱼精，消息灵通"},
+        {"id": "玄鱼", "group": "neutral", "species": "化鲸", "desc": "黑市信息贩子，五百年海洋妖兽"},
     ],
     "edges": [
         # 核心关系
@@ -240,11 +248,18 @@ RELATIONSHIPS = {
         {"source": "墨涟", "target": "千翼", "label": "文书参谋", "type": "ally"},
         {"source": "翎羽", "target": "千翼", "label": "远亲", "type": "family"},
         # 学校/日常
-        {"source": "土御门·澄夜", "target": "晓光", "label": "发现身份", "type": "neutral"},
-        {"source": "铃", "target": "丁老板", "label": "书店常客", "type": "friend"},
+        {"source": "土御门·澄夜", "target": "晓光", "label": "发现身份/记忆裂痕", "type": "neutral"},
+        {"source": "铃", "target": "晓光", "label": "朋友/暗中观察", "type": "friend"},
+        {"source": "铃", "target": "叶月", "label": "养女/支部长", "type": "family"},
+        {"source": "铃", "target": "丁老板", "label": "仓库邻居", "type": "friend"},
+        {"source": "青栀", "target": "晓光", "label": "主治医师", "type": "ally"},
+        {"source": "紬", "target": "晓光", "label": "修补店/路过打招呼", "type": "neutral"},
+        {"source": "土御门·暁", "target": "土御门·澄夜", "label": "父女", "type": "family"},
+        {"source": "静", "target": "绒羽", "label": "任命/风见代表", "type": "ally"},
+        {"source": "绒羽", "target": "晓光", "label": "互呛竞争/朋友", "type": "friend"},
         # 敌对
         {"source": "夜冠", "target": "主人", "label": "敌对", "type": "enemy"},
-        {"source": "灰鸦", "target": "夜冠", "label": "被控制的部下", "type": "enemy"},
+        {"source": "灰鸦", "target": "夜冠", "label": "执行人/被驯养", "type": "enemy"},
     ],
 }
 
