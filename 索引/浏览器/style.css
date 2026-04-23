@@ -616,6 +616,12 @@ body.sidebar-collapsed .sidebar-collapse-btn .tab-icon {
 }
 
 /* ========== Wiki categories (sidebar) ========== */
+.wiki-categories {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
 .wiki-cat-btn {
   display: flex;
   align-items: center;
@@ -2133,6 +2139,7 @@ kbd {
   margin-bottom: 16px;
 }
 
+.char-detail-relations h4,
 #char-detail-relations h4 {
   font-size: 13px;
   font-weight: 600;

@@ -855,6 +855,16 @@
       /* ── Watch ── */
       watch(readingFontSize, function (v) { localStorage.setItem('aibot_rfontsize', v); });
 
+      // Sync sidebar state to body for CSS selectors like body.sidebar-collapsed
+      watch(sidebarCollapsed, function (v) {
+        document.body.classList.toggle('sidebar-collapsed', v);
+        localStorage.setItem('aibot_sidebar', v ? '1' : '0');
+      }, { immediate: true });
+
+      watch(mobileOpen, function (v) {
+        document.body.classList.toggle('sidebar-open', v);
+      });
+
       return {
         /* 数据 */
         DATA: DATA,
