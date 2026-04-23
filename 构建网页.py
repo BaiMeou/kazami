@@ -268,17 +268,37 @@ def build_tree(files):
     return tree
 
 
+def count_chars(text):
+    """统计有效字符数（去除空白和markdown标记）"""
+    import re
+    # 去除 markdown 标题标记、列表标记等
+    clean = re.sub(r'^#{1,6}\s+', '', text, flags=re.MULTILINE)
+    clean = re.sub(r'^[*\-+]\s+', '', clean, flags=re.MULTILINE)
+    clean = re.sub(r'^\d+\.\s+', '', clean, flags=re.MULTILINE)
+    clean = re.sub(r'^>\s?', '', clean, flags=re.MULTILINE)
+    clean = re.sub(r'\*{1,3}|`{1,3}|~~', '', clean)
+    clean = re.sub(r'---+', '', clean)
+    clean = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', clean)
+    # 去除空白
+    clean = re.sub(r'\s+', '', clean)
+    return len(clean)
+
+
 def compute_stats(files):
     """计算项目统计信息"""
-    stats = {"total_files": 0, "total_lines": 0, "modules": {}}
+    stats = {"total_files": 0, "total_lines": 0, "total_chars": 0, "modules": {}}
     for path, info in files.items():
+        chars = count_chars(info["content"])
+        info["chars"] = chars
         stats["total_files"] += 1
         stats["total_lines"] += info["lines"]
+        stats["total_chars"] += chars
         module = path.split("/")[0] if "/" in path else "顶级"
         if module not in stats["modules"]:
-            stats["modules"][module] = {"files": 0, "lines": 0}
+            stats["modules"][module] = {"files": 0, "lines": 0, "chars": 0}
         stats["modules"][module]["files"] += 1
         stats["modules"][module]["lines"] += info["lines"]
+        stats["modules"][module]["chars"] += chars
     return stats
 
 
@@ -292,6 +312,19 @@ def main():
 
     # 准备数据
     file_data = {k: v["content"] for k, v in files.items()}
+    file_chars = {k: v["chars"] for k, v in files.items()}
+
+    # 卷字数统计
+    for vol in VOLUMES:
+        vol_chars = 0
+        chapter_chars = []
+        for ch in vol["chapters"]:
+            fpath = "小说/" + ch + ".md"
+            ch_chars = file_chars.get(fpath, 0)
+            vol_chars += ch_chars
+            chapter_chars.append(ch_chars)
+        vol["chars"] = vol_chars
+        vol["chapterChars"] = chapter_chars
 
     # 构建百科索引（标题+摘要）
     encyclopedia = {}
@@ -316,6 +349,7 @@ def main():
 
     app_data = {
         "files": file_data,
+        "fileChars": file_chars,
         "tree": tree,
         "stats": stats,
         "volumes": VOLUMES,

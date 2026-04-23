@@ -1,356 +1,56 @@
 /**
- * AIbot 项目浏览器 — 和风古典版
- * 纯静态、零依赖、file:// 协议兼容
+ * 风见市物语 — Vue 3 现代阅读器
+ * 纯静态、file:// 兼容、Vue 3 CDN (本地)
  */
-(function () {
+;(function () {
   'use strict';
 
   var DATA = window.APP_DATA;
-  if (!DATA) { document.body.innerHTML = '<p>数据加载失败，请先运行 python 构建网页.py</p>'; return; }
+  if (!DATA) {
+    document.body.innerHTML = '<p style="padding:2em;font-size:1.2em">数据加载失败，请先运行 <code>python 构建网页.py</code></p>';
+    return;
+  }
 
-  // ═══════════════════════════════════════════
-  // 工具函数
-  // ═══════════════════════════════════════════
-  function $(sel, ctx) { return (ctx || document).querySelector(sel); }
-  function $$(sel, ctx) { return Array.from((ctx || document).querySelectorAll(sel)); }
+  var Vue = window.Vue;
+  if (!Vue) {
+    document.body.innerHTML = '<p style="padding:2em">Vue 加载失败，请确认 vue.global.prod.js 存在</p>';
+    return;
+  }
+
+  var ref = Vue.ref;
+  var computed = Vue.computed;
+  var watch = Vue.watch;
+  var onMounted = Vue.onMounted;
+  var onUnmounted = Vue.onUnmounted;
+  var nextTick = Vue.nextTick;
+
+  /* ═══════════════════════════════════════════
+     工具函数
+     ═══════════════════════════════════════════ */
   function esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
   function debounce(fn, ms) { var t; return function () { clearTimeout(t); t = setTimeout(fn, ms); }; }
-  function show(el) { el && el.classList.remove('hidden'); }
-  function hide(el) { el && el.classList.add('hidden'); }
+  function clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
 
-  // ═══════════════════════════════════════════
-  // 状态管理
-  // ═══════════════════════════════════════════
-  var state = {
-    tab: 'home',
-    file: null,
-    volume: null,
-    chapter: null,
-    novelMode: false,
-    theme: localStorage.getItem('aibot_theme') || '',
-    fontSize: parseInt(localStorage.getItem('aibot_fontsize')) || 16,
-  };
+  /* ── 所有小说章节 (flat) ── */
+  var allChapters = [];
+  DATA.volumes.forEach(function (v) { v.chapters.forEach(function (c) { allChapters.push(c); }); });
+  var novelTotalChars = 0;
+  DATA.volumes.forEach(function (v) { novelTotalChars += (v.chars || 0); });
 
-  // 阅读进度
+  /* ── localStorage 工具 ── */
   var PROGRESS_KEY = 'aibot_reading_progress';
-  function getProgress() {
-    try { return JSON.parse(localStorage.getItem(PROGRESS_KEY)) || {}; } catch (e) { return {}; }
-  }
-  function saveProgress(path, data) {
+  function getProgress() { try { return JSON.parse(localStorage.getItem(PROGRESS_KEY)) || {}; } catch (e) { return {}; } }
+  function saveProgressData(path, data) {
     var p = getProgress();
     p[path] = Object.assign(p[path] || {}, data);
     localStorage.setItem(PROGRESS_KEY, JSON.stringify(p));
   }
-  function isRead(path) { var p = getProgress(); return p[path] && p[path].read; }
+  function lsGet(k, d) { var v = localStorage.getItem(k); return v !== null ? v : d; }
+  function lsGetInt(k, d) { var v = parseInt(localStorage.getItem(k), 10); return isNaN(v) ? d : v; }
 
-  // ═══════════════════════════════════════════
-  // 初始化
-  // ═══════════════════════════════════════════
-  function init() {
-    applyTheme(state.theme);
-    applyFontSize(state.fontSize);
-    bindEvents();
-    buildSidebar();
-    renderDashboard();
-    handleHash();
-    window.addEventListener('hashchange', handleHash);
-  }
-
-  // ═══════════════════════════════════════════
-  // 主题与字体
-  // ═══════════════════════════════════════════
-  function applyTheme(t) {
-    document.documentElement.setAttribute('data-theme', t);
-    state.theme = t;
-    localStorage.setItem('aibot_theme', t);
-    var btn = $('#btn-theme');
-    if (btn) btn.innerHTML = t === 'dark' ? '&#9788;' : '&#9790;';
-  }
-  function toggleTheme() { applyTheme(state.theme === 'dark' ? '' : 'dark'); }
-  function applyFontSize(s) {
-    document.documentElement.style.setProperty('--font-size', s + 'px');
-    state.fontSize = s;
-    localStorage.setItem('aibot_fontsize', s);
-  }
-  function cycleFontSize() {
-    var sizes = [14, 16, 18];
-    var i = (sizes.indexOf(state.fontSize) + 1) % sizes.length;
-    applyFontSize(sizes[i]);
-  }
-
-  // ═══════════════════════════════════════════
-  // 事件绑定
-  // ═══════════════════════════════════════════
-  function bindEvents() {
-    $$('.tab-btn').forEach(function (btn) {
-      btn.addEventListener('click', function () { switchTab(btn.dataset.tab); });
-    });
-    var btnTheme = $('#btn-theme'); if (btnTheme) btnTheme.addEventListener('click', toggleTheme);
-    var btnFont = $('#btn-font-size'); if (btnFont) btnFont.addEventListener('click', cycleFontSize);
-    var btnRead = $('#btn-reading-mode'); if (btnRead) btnRead.addEventListener('click', toggleReadingMode);
-    var btnHelp = $('#btn-help'); if (btnHelp) btnHelp.addEventListener('click', function () { toggleModal('help-modal'); });
-    var si = $('#search-input');
-    if (si) si.addEventListener('input', debounce(doSearch, 200));
-    var ff = $('#file-filter');
-    if (ff) ff.addEventListener('input', debounce(filterFileTree, 150));
-    var rc = $('#reading-close'); if (rc) rc.addEventListener('click', closeReading);
-    var pc = $('#prev-chapter'); if (pc) pc.addEventListener('click', function () { navChapter(-1); });
-    var nc = $('#next-chapter'); if (nc) nc.addEventListener('click', function () { navChapter(1); });
-    $$('.modal-close').forEach(function (btn) {
-      btn.addEventListener('click', function () {
-        var modal = btn.closest('[id$="-modal"]');
-        if (modal) hide(modal);
-      });
-    });
-    $$('.tl-filter').forEach(function (btn) {
-      btn.addEventListener('click', function () {
-        $$('.tl-filter').forEach(function (b) { b.classList.remove('active'); });
-        btn.classList.add('active');
-        renderTimeline(btn.dataset.vol);
-      });
-    });
-    var mb = $('#mobile-menu-btn');
-    if (mb) mb.addEventListener('click', function () { document.body.classList.toggle('sidebar-open'); });
-    var ov = $('#sidebar-overlay');
-    if (ov) ov.addEventListener('click', function () { document.body.classList.remove('sidebar-open'); });
-    document.addEventListener('keydown', handleKey);
-    var content = $('#content');
-    if (content) content.addEventListener('scroll', debounce(highlightTOC, 50));
-  }
-
-  // ═══════════════════════════════════════════
-  // Hash 路由
-  // ═══════════════════════════════════════════
-  function handleHash() {
-    var h = location.hash.slice(1);
-    if (!h) { switchTab('home'); showDashboard(); return; }
-    var parts = h.split('/');
-    var cmd = decodeURIComponent(parts[0]);
-    var arg = parts.slice(1).map(decodeURIComponent).join('/');
-    if (cmd === 'file' && arg) { switchTab('files'); showFile(arg); }
-    else if (cmd === 'novel' && arg) { switchTab('novels'); openNovelChapter(arg); }
-    else if (cmd === 'search' && arg) { switchTab('search'); $('#search-input').value = arg; doSearch(); }
-    else if (cmd === 'timeline') { switchTab('timeline'); showTimelineView(); }
-    else if (cmd === 'wiki') { switchTab('wiki'); if (arg) showWikiCategory(arg); else renderWikiHome(); }
-    else if (cmd === 'char' && arg) { switchTab('characters'); showCharGraph(); highlightNode(arg); }
-    else { switchTab('home'); showDashboard(); }
-  }
-
-  // ═══════════════════════════════════════════
-  // 标签页切换
-  // ═══════════════════════════════════════════
-  function switchTab(tab) {
-    state.tab = tab;
-    $$('.tab-btn').forEach(function (b) { b.classList.toggle('active', b.dataset.tab === tab); });
-    $$('.panel').forEach(function (p) { p.classList.toggle('active', p.id === 'panel-' + tab); });
-    hide($('#dashboard')); hide($('#file-content')); hide($('#timeline-view'));
-    hide($('#wiki-content')); hide($('#character-graph')); hide($('#chapter-nav'));
-    hide($('#toc'));
-    if (tab === 'home') showDashboard();
-    else if (tab === 'characters') showCharGraph();
-    else if (tab === 'timeline') showTimelineView();
-    else if (tab === 'wiki') { show($('#wiki-content')); renderWikiHome(); }
-    document.body.classList.remove('sidebar-open');
-  }
-
-  // ═══════════════════════════════════════════
-  // 侧边栏构建
-  // ═══════════════════════════════════════════
-  function buildSidebar() {
-    buildFileTree();
-    buildNovelList();
-    buildWikiCategories();
-    buildHomePanel();
-  }
-
-  function buildHomePanel() {
-    var panel = $('#panel-home');
-    if (!panel) return;
-    var progress = getProgress();
-    var novelFiles = [];
-    DATA.volumes.forEach(function (v) { v.chapters.forEach(function (c) { novelFiles.push('小说/' + c + '.md'); }); });
-    var readCount = novelFiles.filter(function (f) { return progress[f] && progress[f].read; }).length;
-    var lastRead = null, lastTime = 0;
-    Object.keys(progress).forEach(function (k) {
-      if (progress[k].lastTime > lastTime) { lastTime = progress[k].lastTime; lastRead = k; }
-    });
-    var h = '<div class="home-stats">';
-    h += '<div class="stat-badge"><span class="stat-num">' + DATA.stats.total_files + '</span><span class="stat-label">文件</span></div>';
-    h += '<div class="stat-badge"><span class="stat-num">' + DATA.stats.total_lines.toLocaleString() + '</span><span class="stat-label">行</span></div>';
-    h += '<div class="stat-badge"><span class="stat-num">' + readCount + '/29</span><span class="stat-label">已读</span></div>';
-    h += '</div>';
-    if (lastRead) {
-      var name = lastRead.split('/').pop().replace('.md', '');
-      h += '<a class="continue-btn" href="#file/' + esc(lastRead) + '">继续阅读: ' + esc(name) + '</a>';
-    }
-    panel.innerHTML = h;
-  }
-
-  function buildFileTree() {
-    var container = $('#file-tree');
-    if (!container) return;
-    container.innerHTML = renderTree(DATA.tree, '');
-  }
-
-  function renderTree(node, prefix) {
-    var h = '';
-    var keys = Object.keys(node).sort(function (a, b) {
-      var aDir = node[a] !== null, bDir = node[b] !== null;
-      if (aDir !== bDir) return aDir ? -1 : 1;
-      return a.localeCompare(b);
-    });
-    keys.forEach(function (key) {
-      var path = prefix ? prefix + '/' + key : key;
-      if (node[key] !== null) {
-        h += '<div class="tree-dir" data-path="' + esc(path) + '">';
-        h += '<div class="tree-dir-label" onclick="APP.toggleDir(this)"><span class="tree-arrow">&#9654;</span> ' + esc(key) + '</div>';
-        h += '<div class="tree-children hidden">' + renderTree(node[key], path) + '</div>';
-        h += '</div>';
-      } else {
-        var readMark = isRead(path) ? '<span class="read-mark">&#10003;</span>' : '';
-        h += '<div class="tree-file" onclick="APP.openFile(\'' + esc(path.replace(/'/g, "\\'")) + '\')">' + readMark + esc(key) + '</div>';
-      }
-    });
-    return h;
-  }
-
-  function toggleDir(label) {
-    var children = label.nextElementSibling;
-    var arrow = label.querySelector('.tree-arrow');
-    if (children) {
-      children.classList.toggle('hidden');
-      arrow.style.transform = children.classList.contains('hidden') ? '' : 'rotate(90deg)';
-    }
-  }
-
-  function filterFileTree() {
-    var val = ($('#file-filter') || {}).value || '';
-    val = val.toLowerCase();
-    $$('#file-tree .tree-file').forEach(function (el) {
-      el.style.display = !val || el.textContent.toLowerCase().includes(val) ? '' : 'none';
-    });
-    if (val) $$('#file-tree .tree-children').forEach(function (el) { el.classList.remove('hidden'); });
-  }
-
-  function buildNovelList() {
-    var container = $('#novel-list');
-    if (!container) return;
-    var h = '';
-    DATA.volumes.forEach(function (vol) {
-      h += '<div class="novel-vol">';
-      h += '<div class="novel-vol-header" onclick="APP.toggleNovelVol(this)" style="border-left-color:' + vol.color + '">';
-      h += '<span class="tree-arrow">&#9654;</span> ' + esc(vol.id) + ' · ' + esc(vol.title);
-      h += '<span class="vol-time">' + esc(vol.time) + '</span></div>';
-      h += '<div class="novel-chapters hidden">';
-      vol.chapters.forEach(function (ch) {
-        var fpath = '小说/' + ch + '.md';
-        var name = ch.split('/').pop().replace(/_/g, ' ');
-        var readMark = isRead(fpath) ? '<span class="read-mark">&#10003;</span>' : '';
-        h += '<div class="novel-ch" onclick="APP.openNovelChapter(\'' + esc(ch.replace(/'/g, "\\'")) + '\')">' + readMark + esc(name) + '</div>';
-      });
-      h += '</div></div>';
-    });
-    container.innerHTML = h;
-  }
-
-  function toggleNovelVol(header) {
-    var chapters = header.nextElementSibling;
-    var arrow = header.querySelector('.tree-arrow');
-    if (chapters) {
-      chapters.classList.toggle('hidden');
-      arrow.style.transform = chapters.classList.contains('hidden') ? '' : 'rotate(90deg)';
-    }
-  }
-
-  function buildWikiCategories() {
-    var container = $('#wiki-cats');
-    if (!container) return;
-    var h = '';
-    Object.keys(DATA.encyclopedia).forEach(function (cat) {
-      var info = DATA.encyclopedia[cat];
-      h += '<div class="wiki-cat-btn" onclick="APP.showWikiCategory(\'' + esc(cat) + '\')">';
-      h += '<span class="wiki-cat-name">' + esc(cat) + '</span>';
-      h += '<span class="wiki-cat-count">' + info.entries.length + '</span>';
-      h += '</div>';
-    });
-    container.innerHTML = h;
-  }
-
-  // ═══════════════════════════════════════════
-  // 仪表盘
-  // ═══════════════════════════════════════════
-  function showDashboard() { show($('#dashboard')); renderDashboard(); }
-
-  function renderDashboard() {
-    var el = $('#dashboard');
-    if (!el) return;
-    var h = '';
-    h += '<div class="dash-section"><h2>项目概览</h2><div class="stat-grid">';
-    var mods = DATA.stats.modules;
-    Object.keys(mods).forEach(function (m) {
-      h += '<div class="stat-card"><div class="stat-card-num">' + mods[m].files + '</div><div class="stat-card-label">' + esc(m) + '</div></div>';
-    });
-    h += '</div></div>';
-    h += '<div class="dash-section"><h2>核心角色</h2><div class="char-grid">';
-    DATA.characters.forEach(function (c) {
-      h += '<div class="char-card" onclick="APP.openFile(\'角色/' + esc(c.name) + '.md\')">';
-      h += '<h3>' + esc(c.name) + '</h3>';
-      h += '<p class="char-species">' + esc(c.species) + ' · ' + esc(c.age) + '岁</p>';
-      h += '<p class="char-trait">' + esc(c.trait) + '</p>';
-      h += '<p class="char-relation">' + esc(c.relation) + '</p>';
-      h += '</div>';
-    });
-    h += '</div></div>';
-    h += '<div class="dash-section"><h2>故事</h2><div class="vol-grid">';
-    DATA.volumes.forEach(function (v) {
-      h += '<div class="vol-card" style="border-left-color:' + v.color + '" onclick="APP.switchTab(\'novels\')">';
-      h += '<h3>' + esc(v.id) + ' · ' + esc(v.title) + '</h3>';
-      h += '<p>' + esc(v.subtitle) + '</p>';
-      h += '<span class="vol-meta">' + esc(v.time) + ' · ' + v.chapters.length + '章</span>';
-      h += '</div>';
-    });
-    h += '</div></div>';
-    h += '<div class="dash-section"><h2>世界观</h2><div class="keyword-tags">';
-    DATA.worldKeywords.forEach(function (kw) {
-      h += '<span class="keyword-tag">' + esc(kw) + '</span>';
-    });
-    h += '</div></div>';
-    el.innerHTML = h;
-  }
-
-  // ═══════════════════════════════════════════
-  // 文件显示
-  // ═══════════════════════════════════════════
-  function openFile(path) {
-    state.file = path;
-    location.hash = '#file/' + encodeURIComponent(path);
-    showFile(path);
-  }
-
-  function showFile(path) {
-    state.file = path;
-    var content = DATA.files[path];
-    if (!content) { $('#file-content').innerHTML = '<p>文件未找到: ' + esc(path) + '</p>'; show($('#file-content')); return; }
-    saveProgress(path, { read: true, lastTime: Date.now() });
-    hide($('#dashboard')); hide($('#timeline-view')); hide($('#wiki-content')); hide($('#character-graph'));
-    show($('#file-content')); show($('#toc'));
-    var parts = path.split('/');
-    var bc = parts.map(function (p) { return '<span class="bc-part">' + esc(p) + '</span>'; }).join(' <span class="bc-sep">/</span> ');
-    $('#breadcrumb').innerHTML = bc;
-    var result = renderMarkdown(content);
-    $('#file-content').innerHTML = '<div class="md-body">' + result.html + '</div>';
-    renderTOC(result.headings);
-    var prog = getProgress()[path];
-    var ct = $('#content');
-    if (prog && prog.scrollPos && ct) ct.scrollTop = prog.scrollPos;
-    else if (ct) ct.scrollTop = 0;
-    if (ct) ct.onscroll = function () { saveProgress(path, { scrollPos: ct.scrollTop }); };
-    if (state.novelMode) { show($('#chapter-nav')); updateChapterNav(); }
-  }
-
-  // ═══════════════════════════════════════════
-  // Markdown 渲染
-  // ═══════════════════════════════════════════
+  /* ═══════════════════════════════════════════
+     Markdown 渲染器
+     ═══════════════════════════════════════════ */
   var slugCounts = {};
   function resetSlugs() { slugCounts = {}; }
   function slugify(text) {
@@ -358,44 +58,6 @@
     if (!base) base = 'heading';
     if (slugCounts[base]) { slugCounts[base]++; base += '-' + slugCounts[base]; } else { slugCounts[base] = 1; }
     return base;
-  }
-
-  function renderMarkdown(src) {
-    resetSlugs();
-    var headings = [];
-    var lines = src.split('\n');
-    var html = '';
-    var inCode = false, codeLines = [];
-    var inTable = false, tableLines = [];
-    var inBlockquote = false, bqLines = [];
-    var inList = false, listLines = [], listOrdered = false;
-
-    function flushList() { if (!inList) return; html += renderList(listLines, listOrdered); listLines = []; inList = false; }
-    function flushBq() { if (!inBlockquote) return; html += '<blockquote>' + bqLines.map(renderInline).join('<br>') + '</blockquote>'; bqLines = []; inBlockquote = false; }
-    function flushTable() { if (!inTable) return; html += renderTableHTML(tableLines); tableLines = []; inTable = false; }
-
-    for (var i = 0; i < lines.length; i++) {
-      var line = lines[i];
-      if (line.match(/^```/)) {
-        if (inCode) { html += '<pre><code>' + esc(codeLines.join('\n')) + '</code></pre>'; inCode = false; codeLines = []; }
-        else { flushList(); flushBq(); flushTable(); inCode = true; }
-        continue;
-      }
-      if (inCode) { codeLines.push(line); continue; }
-      if (!line.trim()) { flushList(); flushBq(); flushTable(); continue; }
-      if (line.trim().startsWith('|')) { flushList(); flushBq(); if (!inTable) inTable = true; tableLines.push(line); continue; } else { flushTable(); }
-      if (line.match(/^>\s?/)) { flushList(); flushTable(); inBlockquote = true; bqLines.push(line.replace(/^>\s?/, '')); continue; } else { flushBq(); }
-      var hm = line.match(/^(#{1,6})\s+(.+)/);
-      if (hm) { flushList(); var lv = hm[1].length; var txt = hm[2].trim(); var sl = slugify(txt); headings.push({ level: lv, text: txt, slug: sl }); html += '<h' + lv + ' id="' + sl + '">' + renderInline(txt) + '</h' + lv + '>'; continue; }
-      if (line.match(/^(-{3,}|\*{3,}|_{3,})\s*$/)) { flushList(); html += '<hr>'; continue; }
-      var ulm = line.match(/^(\s*)[*\-+]\s+(.+)/);
-      var olm = line.match(/^(\s*)\d+\.\s+(.+)/);
-      if (ulm || olm) { flushBq(); flushTable(); if (!inList) { inList = true; listOrdered = !!olm; } listLines.push(line); continue; } else { flushList(); }
-      html += '<p>' + renderInline(line) + '</p>';
-    }
-    flushList(); flushBq(); flushTable();
-    if (inCode) html += '<pre><code>' + esc(codeLines.join('\n')) + '</code></pre>';
-    return { html: html, headings: headings };
   }
 
   function renderInline(text) {
@@ -432,216 +94,109 @@
     return h + '</table>';
   }
 
-  function renderTOC(headings) {
-    var list = $('#toc-list');
-    if (!list) return;
-    if (!headings.length) { list.innerHTML = '<p class="toc-empty">无目录</p>'; return; }
-    var h = '';
-    headings.forEach(function (item) {
-      h += '<a class="toc-item toc-h' + item.level + '" href="#' + item.slug + '" onclick="APP.scrollToHeading(\'' + esc(item.slug) + '\'); return false;">' + esc(item.text) + '</a>';
-    });
-    list.innerHTML = h;
-  }
+  function renderMarkdown(src) {
+    resetSlugs();
+    var headings = [];
+    var lines = src.split('\n');
+    var html = '';
+    var inCode = false, codeLines = [], codeLang = '';
+    var inTable = false, tableLines = [];
+    var inBlockquote = false, bqLines = [];
+    var inList = false, listLines = [], listOrdered = false;
 
-  function scrollToHeading(slug) {
-    var el = document.getElementById(slug);
-    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }
+    function flushList() { if (!inList) return; html += renderList(listLines, listOrdered); listLines = []; inList = false; }
+    function flushBq() { if (!inBlockquote) return; html += '<blockquote>' + bqLines.map(renderInline).join('<br>') + '</blockquote>'; bqLines = []; inBlockquote = false; }
+    function flushTable() { if (!inTable) return; html += renderTableHTML(tableLines); tableLines = []; inTable = false; }
 
-  function highlightTOC() {
-    var content = $('#content');
-    if (!content) return;
-    var headings = $$('.md-body h1, .md-body h2, .md-body h3, .md-body h4');
-    var scrollTop = content.scrollTop;
-    var current = null;
-    headings.forEach(function (h) { if (h.offsetTop - 80 <= scrollTop) current = h.id; });
-    $$('.toc-item').forEach(function (a) { a.classList.toggle('active', a.getAttribute('href') === '#' + current); });
-  }
-
-  // ═══════════════════════════════════════════
-  // 小说阅读
-  // ═══════════════════════════════════════════
-  function openNovelChapter(chapterPath) {
-    state.novelMode = true;
-    for (var vi = 0; vi < DATA.volumes.length; vi++) {
-      var vol = DATA.volumes[vi];
-      var ci = vol.chapters.indexOf(chapterPath);
-      if (ci >= 0) { state.volume = vi; state.chapter = ci; break; }
-    }
-    var fpath = '小说/' + chapterPath + '.md';
-    location.hash = '#novel/' + encodeURIComponent(chapterPath);
-    showFile(fpath);
-    show($('#chapter-nav'));
-    updateChapterNav();
-  }
-
-  function updateChapterNav() {
-    if (state.volume === null) return;
-    var ci = state.chapter;
-    var allChapters = [];
-    DATA.volumes.forEach(function (v) { v.chapters.forEach(function (c) { allChapters.push(c); }); });
-    var globalIdx = 0;
-    for (var i = 0; i < state.volume; i++) globalIdx += DATA.volumes[i].chapters.length;
-    globalIdx += ci;
-    var prog = $('#chapter-progress');
-    if (prog) prog.textContent = (globalIdx + 1) + ' / ' + allChapters.length;
-    var pb = $('#prev-chapter'); if (pb) pb.disabled = globalIdx === 0;
-    var nb = $('#next-chapter'); if (nb) nb.disabled = globalIdx === allChapters.length - 1;
-  }
-
-  function navChapter(dir) {
-    if (!state.novelMode) return;
-    var allChapters = [];
-    DATA.volumes.forEach(function (v) { v.chapters.forEach(function (c) { allChapters.push(c); }); });
-    var globalIdx = 0;
-    for (var i = 0; i < state.volume; i++) globalIdx += DATA.volumes[i].chapters.length;
-    globalIdx += state.chapter;
-    var newIdx = globalIdx + dir;
-    if (newIdx < 0 || newIdx >= allChapters.length) return;
-    openNovelChapter(allChapters[newIdx]);
-  }
-
-  // ═══════════════════════════════════════════
-  // 阅读模式
-  // ═══════════════════════════════════════════
-  function toggleReadingMode() {
-    var overlay = $('#reading-overlay');
-    if (!overlay) return;
-    if (overlay.classList.contains('hidden')) openReading(); else closeReading();
-  }
-  function openReading() {
-    if (!state.file) return;
-    var content = DATA.files[state.file];
-    if (!content) return;
-    var result = renderMarkdown(content);
-    $('#reading-body').innerHTML = '<div class="md-body">' + result.html + '</div>';
-    $('#reading-title').textContent = state.file.split('/').pop().replace('.md', '');
-    show($('#reading-overlay'));
-  }
-  function closeReading() { hide($('#reading-overlay')); }
-
-  // ═══════════════════════════════════════════
-  // 搜索
-  // ═══════════════════════════════════════════
-  function doSearch() {
-    var input = $('#search-input');
-    var results = $('#search-results');
-    if (!input || !results) return;
-    var q = input.value.trim().toLowerCase();
-    if (!q) { results.innerHTML = ''; return; }
-    var matches = [];
-    Object.keys(DATA.files).forEach(function (path) {
-      var nameMatch = path.toLowerCase().includes(q);
-      var content = DATA.files[path];
-      var lines = content.split('\n');
-      var lineMatches = [];
-      for (var i = 0; i < lines.length && lineMatches.length < 3; i++) {
-        if (lines[i].toLowerCase().includes(q)) lineMatches.push({ num: i + 1, text: lines[i] });
+    for (var i = 0; i < lines.length; i++) {
+      var line = lines[i];
+      var codeMatch = line.match(/^```(\w*)/);
+      if (codeMatch !== null && line.trim().indexOf('```') === 0) {
+        if (inCode) { html += '<pre><code' + (codeLang ? ' class="lang-' + codeLang + '"' : '') + '>' + esc(codeLines.join('\n')) + '</code></pre>'; inCode = false; codeLines = []; codeLang = ''; }
+        else { flushList(); flushBq(); flushTable(); inCode = true; codeLang = codeMatch[1] || ''; }
+        continue;
       }
-      if (nameMatch || lineMatches.length) matches.push({ path: path, nameMatch: nameMatch, lines: lineMatches });
-    });
-    matches.sort(function (a, b) { return (b.nameMatch ? 1 : 0) - (a.nameMatch ? 1 : 0); });
-    matches = matches.slice(0, 30);
-    var h = '<div class="search-count">找到 ' + matches.length + ' 个结果</div>';
-    matches.forEach(function (m) {
-      h += '<div class="search-item" onclick="APP.openFile(\'' + esc(m.path.replace(/'/g, "\\'")) + '\')">';
-      h += '<div class="search-path">' + highlightText(m.path, q) + '</div>';
-      m.lines.forEach(function (l) {
-        h += '<div class="search-line"><span class="line-num">' + l.num + '</span> ' + highlightText(truncate(l.text, 100), q) + '</div>';
-      });
-      h += '</div>';
-    });
-    results.innerHTML = h;
-  }
-  function highlightText(text, q) {
-    var escaped = esc(text);
-    var regex = new RegExp('(' + q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'gi');
-    return escaped.replace(regex, '<mark>$1</mark>');
-  }
-  function truncate(s, len) { return s.length > len ? s.slice(0, len) + '...' : s; }
-
-  // ═══════════════════════════════════════════
-  // 角色关系图谱 (Canvas 2D)
-  // ═══════════════════════════════════════════
-  var graphState = { nodes: [], edges: [], dragging: null, offset: { x: 0, y: 0 }, scale: 1, hover: null, animId: null };
-  var GROUP_COLORS = { core: '#c41e3a', scb: '#4a90d9', baigui: '#5a9e6f', qingqiu: '#d4a574', enemy: '#7a5ea7', friend: '#d4748a', school: '#5ab5b0' };
-  var EDGE_COLORS = { love: '#c41e3a', family: '#d4a574', friend: '#5a9e6f', enemy: '#7a5ea7', ally: '#4a90d9', neutral: '#888' };
-
-  function showCharGraph() {
-    show($('#character-graph'));
-    var canvas = $('#graph-canvas');
-    if (!canvas) return;
-    var container = $('#character-graph');
-    canvas.width = container.clientWidth || 800;
-    canvas.height = container.clientHeight || 600;
-    if (!graphState.nodes.length) initGraph(canvas);
-    if (!graphState.animId) animateGraph(canvas);
+      if (inCode) { codeLines.push(line); continue; }
+      if (!line.trim()) { flushList(); flushBq(); flushTable(); continue; }
+      if (line.trim().charAt(0) === '|') { flushList(); flushBq(); if (!inTable) inTable = true; tableLines.push(line); continue; } else { flushTable(); }
+      if (line.match(/^>\s?/)) { flushList(); flushTable(); inBlockquote = true; bqLines.push(line.replace(/^>\s?/, '')); continue; } else { flushBq(); }
+      var hm = line.match(/^(#{1,6})\s+(.+)/);
+      if (hm) { flushList(); var lv = hm[1].length; var txt = hm[2].trim(); var sl = slugify(txt); headings.push({ level: lv, text: txt, slug: sl }); html += '<h' + lv + ' id="' + sl + '">' + renderInline(txt) + '</h' + lv + '>'; continue; }
+      if (line.match(/^(-{3,}|\*{3,}|_{3,})\s*$/)) { flushList(); html += '<hr>'; continue; }
+      var ulm = line.match(/^(\s*)[*\-+]\s+(.+)/);
+      var olm = line.match(/^(\s*)\d+\.\s+(.+)/);
+      if (ulm || olm) { flushBq(); flushTable(); if (!inList) { inList = true; listOrdered = !!olm; } listLines.push(line); continue; } else { flushList(); }
+      html += '<p>' + renderInline(line) + '</p>';
+    }
+    flushList(); flushBq(); flushTable();
+    if (inCode) html += '<pre><code>' + esc(codeLines.join('\n')) + '</code></pre>';
+    return { html: '<div class="md-body">' + html + '</div>', headings: headings };
   }
 
-  function initGraph(canvas) {
+  /* ═══════════════════════════════════════════
+     角色关系图 (Canvas 2D)
+     ═══════════════════════════════════════════ */
+  var GROUP_COLORS = { core: '#c24050', scb: '#4a90d9', baigui: '#5a9e6f', qingqiu: '#c9a96e', enemy: '#7a5ea7', friend: '#d4748a', school: '#5ab5b0' };
+  var EDGE_COLORS = { love: '#c24050', family: '#c9a96e', friend: '#5a9e6f', enemy: '#7a5ea7', ally: '#4a90d9', neutral: '#888' };
+
+  function createGraph(canvas, theme, onClickNode) {
     var W = canvas.width, H = canvas.height;
     var cx = W / 2, cy = H / 2;
-    graphState.nodes = DATA.relationships.nodes.map(function (n, i) {
+    var nodes = DATA.relationships.nodes.map(function (n, i) {
       var angle = (i / DATA.relationships.nodes.length) * Math.PI * 2;
       var r = n.group === 'core' ? 60 : 180;
-      return { id: n.id, group: n.group, species: n.species, desc: n.desc,
+      return {
+        id: n.id, group: n.group, species: n.species, desc: n.desc,
         x: cx + Math.cos(angle) * r + (Math.random() - 0.5) * 40,
         y: cy + Math.sin(angle) * r + (Math.random() - 0.5) * 40,
-        vx: 0, vy: 0, radius: n.group === 'core' ? 28 : 20 };
+        vx: 0, vy: 0, radius: n.group === 'core' ? 28 : 20
+      };
     });
-    graphState.edges = DATA.relationships.edges.slice();
-    canvas.addEventListener('mousedown', graphMouseDown);
-    canvas.addEventListener('mousemove', graphMouseMove);
-    canvas.addEventListener('mouseup', graphMouseUp);
-    canvas.addEventListener('wheel', graphWheel, { passive: false });
-    canvas.addEventListener('click', graphClick);
-  }
+    var edges = DATA.relationships.edges.slice();
+    var dragging = null, hover = null, scale = 1, offset = { x: 0, y: 0 };
+    var animId = null;
 
-  function findNodeAt(x, y) {
-    var nodes = graphState.nodes;
-    for (var i = nodes.length - 1; i >= 0; i--) {
-      var n = nodes[i];
-      var nx = (x - graphState.offset.x) / graphState.scale;
-      var ny = (y - graphState.offset.y) / graphState.scale;
-      var dx = nx - n.x, dy = ny - n.y;
-      if (dx * dx + dy * dy < n.radius * n.radius) return n;
+    function nodeById(id) { for (var i = 0; i < nodes.length; i++) { if (nodes[i].id === id) return nodes[i]; } return null; }
+    function findNodeAt(x, y) {
+      for (var i = nodes.length - 1; i >= 0; i--) {
+        var n = nodes[i];
+        var nx = (x - offset.x) / scale, ny = (y - offset.y) / scale;
+        var dx = nx - n.x, dy = ny - n.y;
+        if (dx * dx + dy * dy < n.radius * n.radius) return n;
+      }
+      return null;
     }
-    return null;
-  }
 
-  function graphMouseDown(e) {
-    var rect = e.target.getBoundingClientRect();
-    var node = findNodeAt(e.clientX - rect.left, e.clientY - rect.top);
-    if (node) { graphState.dragging = node; node.vx = 0; node.vy = 0; }
-  }
-  function graphMouseMove(e) {
-    var rect = e.target.getBoundingClientRect();
-    var x = e.clientX - rect.left, y = e.clientY - rect.top;
-    if (graphState.dragging) {
-      graphState.dragging.x = (x - graphState.offset.x) / graphState.scale;
-      graphState.dragging.y = (y - graphState.offset.y) / graphState.scale;
-    }
-    graphState.hover = findNodeAt(x, y);
-    e.target.style.cursor = graphState.hover ? 'pointer' : 'default';
-  }
-  function graphMouseUp() { graphState.dragging = null; }
-  function graphWheel(e) { e.preventDefault(); var d = e.deltaY > 0 ? 0.9 : 1.1; graphState.scale = Math.max(0.3, Math.min(3, graphState.scale * d)); }
-  function graphClick(e) {
-    if (graphState.dragging) return;
-    var rect = e.target.getBoundingClientRect();
-    var node = findNodeAt(e.clientX - rect.left, e.clientY - rect.top);
-    if (node) showCharDetail(node);
-  }
+    canvas.addEventListener('mousedown', function (e) {
+      var rect = canvas.getBoundingClientRect();
+      var node = findNodeAt(e.clientX - rect.left, e.clientY - rect.top);
+      if (node) { dragging = node; node.vx = 0; node.vy = 0; }
+    });
+    canvas.addEventListener('mousemove', function (e) {
+      var rect = canvas.getBoundingClientRect();
+      var x = e.clientX - rect.left, y = e.clientY - rect.top;
+      if (dragging) { dragging.x = (x - offset.x) / scale; dragging.y = (y - offset.y) / scale; }
+      hover = findNodeAt(x, y);
+      canvas.style.cursor = hover ? 'pointer' : 'default';
+    });
+    canvas.addEventListener('mouseup', function () { dragging = null; });
+    canvas.addEventListener('wheel', function (e) {
+      e.preventDefault();
+      var d = e.deltaY > 0 ? 0.9 : 1.1;
+      scale = Math.max(0.3, Math.min(3, scale * d));
+    }, { passive: false });
+    canvas.addEventListener('click', function (e) {
+      if (dragging) return;
+      var rect = canvas.getBoundingClientRect();
+      var node = findNodeAt(e.clientX - rect.left, e.clientY - rect.top);
+      if (node && onClickNode) onClickNode(node);
+    });
 
-  function animateGraph(canvas) {
-    var ctx = canvas.getContext('2d');
-    var nodes = graphState.nodes;
-    var edges = graphState.edges;
-    function nodeById(id) { return nodes.find(function (n) { return n.id === id; }); }
-
-    function step() {
+    function animate() {
+      var ctx = canvas.getContext('2d');
       var damping = 0.85, repulsion = 3000, springLen = 150, springK = 0.01, centerK = 0.002;
-      var cx = canvas.width / 2 / graphState.scale, cy = canvas.height / 2 / graphState.scale;
+      var gcx = W / 2 / scale, gcy = H / 2 / scale;
+
       for (var i = 0; i < nodes.length; i++) {
         for (var j = i + 1; j < nodes.length; j++) {
           var dx = nodes[i].x - nodes[j].x, dy = nodes[i].y - nodes[j].y;
@@ -661,21 +216,22 @@
         t.vx -= (dx / dist) * f; t.vy -= (dy / dist) * f;
       });
       nodes.forEach(function (n) {
-        if (n === graphState.dragging) return;
-        n.vx += (cx - n.x) * centerK; n.vy += (cy - n.y) * centerK;
+        if (n === dragging) return;
+        n.vx += (gcx - n.x) * centerK; n.vy += (gcy - n.y) * centerK;
         n.vx *= damping; n.vy *= damping;
         n.x += n.vx; n.y += n.vy;
       });
 
-      var isDark = state.theme === 'dark';
-      var bgColor = isDark ? '#1a1a2e' : '#f5f0e8';
-      var textColor = isDark ? '#e8dcc8' : '#2c2c2c';
-      var labelColor = isDark ? '#9a8c78' : '#6b6b6b';
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.fillStyle = bgColor; ctx.fillRect(0, 0, canvas.width, canvas.height);
+      var isDark = theme.value === 'dark';
+      var bgColor = isDark ? '#141820' : '#faf8f4';
+      var textColor = isDark ? '#e8e0d0' : '#2a2520';
+      var labelColor = isDark ? '#8a7e70' : '#6b6b6b';
+
+      ctx.clearRect(0, 0, W, H);
+      ctx.fillStyle = bgColor; ctx.fillRect(0, 0, W, H);
       ctx.save();
-      ctx.translate(graphState.offset.x, graphState.offset.y);
-      ctx.scale(graphState.scale, graphState.scale);
+      ctx.translate(offset.x, offset.y);
+      ctx.scale(scale, scale);
 
       edges.forEach(function (e) {
         var s = nodeById(e.source), t = nodeById(e.target);
@@ -691,7 +247,7 @@
       });
 
       nodes.forEach(function (n) {
-        var isHover = graphState.hover === n;
+        var isHover = hover === n;
         ctx.beginPath(); ctx.arc(n.x, n.y, n.radius, 0, Math.PI * 2);
         ctx.fillStyle = GROUP_COLORS[n.group] || '#888';
         if (isHover) { ctx.shadowColor = GROUP_COLORS[n.group]; ctx.shadowBlur = 15; }
@@ -703,127 +259,701 @@
         ctx.fillText(n.id, n.x, n.y + n.radius + 16);
       });
       ctx.restore();
-      graphState.animId = requestAnimationFrame(step);
+      animId = requestAnimationFrame(animate);
     }
-    step();
+
+    animate();
+
+    return {
+      destroy: function () { if (animId) cancelAnimationFrame(animId); },
+      highlightNode: function (name) {
+        var node = nodes.find(function (n) { return n.id === name; });
+        if (node && onClickNode) onClickNode(node);
+      },
+      resize: function (w, h) { W = canvas.width = w; H = canvas.height = h; }
+    };
   }
 
-  function highlightNode(name) {
-    var node = graphState.nodes.find(function (n) { return n.id === name; });
-    if (node) showCharDetail(node);
-  }
-
-  function showCharDetail(node) {
-    $('#char-detail-name').textContent = node.id;
-    $('#char-detail-species').textContent = node.species;
-    $('#char-detail-desc').textContent = node.desc;
-    var rels = graphState.edges.filter(function (e) { return e.source === node.id || e.target === node.id; });
-    var h = '<h4>关系</h4>';
-    rels.forEach(function (r) {
-      var other = r.source === node.id ? r.target : r.source;
-      h += '<div class="char-rel-item"><span class="rel-name">' + esc(other) + '</span><span class="rel-label">' + esc(r.label) + '</span></div>';
-    });
-    $('#char-detail-relations').innerHTML = h;
-    show($('#char-detail-modal'));
-  }
-
-  // ═══════════════════════════════════════════
-  // 时间线
-  // ═══════════════════════════════════════════
-  function showTimelineView() { show($('#timeline-view')); renderTimeline('all'); }
-
-  function renderTimeline(vol) {
-    var el = $('#timeline-view');
-    if (!el) return;
-    var events = DATA.timeline;
-    if (vol && vol !== 'all') events = events.filter(function (e) { return e.vol === vol; });
-    var h = '<div class="timeline-container">';
-    events.forEach(function (evt) {
-      var typeClass = 'tl-' + (evt.type || 'normal');
-      var volColor = '';
-      DATA.volumes.forEach(function (v) { if (v.id === evt.vol) volColor = v.color; });
-      var clickAttr = evt.chapter ? ' onclick="APP.openNovelChapter(\'' + esc(evt.chapter.replace(/'/g, "\\'")) + '\')"' : '';
-      var clickClass = evt.chapter ? ' clickable' : '';
-      h += '<div class="tl-event ' + typeClass + clickClass + '"' + clickAttr + '>';
-      h += '<div class="tl-dot" style="background:' + (volColor || 'var(--accent)') + '"></div>';
-      h += '<div class="tl-line"></div>';
-      h += '<div class="tl-card">';
-      h += '<div class="tl-time">' + esc(evt.time) + '</div>';
-      h += '<div class="tl-vol-tag" style="color:' + (volColor || 'var(--text-secondary)') + '">' + esc(evt.vol) + '</div>';
-      h += '<div class="tl-text">' + esc(evt.event) + '</div>';
-      h += '</div></div>';
-    });
-    h += '</div>';
-    el.innerHTML = h;
-  }
-
-  // ═══════════════════════════════════════════
-  // 世界观百科
-  // ═══════════════════════════════════════════
-  function renderWikiHome() {
-    var el = $('#wiki-content');
-    if (!el) return;
-    var h = '<div class="wiki-home"><h2>世界观百科</h2><div class="wiki-cat-grid">';
-    Object.keys(DATA.encyclopedia).forEach(function (cat) {
-      var info = DATA.encyclopedia[cat];
-      h += '<div class="wiki-cat-card" onclick="APP.showWikiCategory(\'' + esc(cat) + '\')">';
-      h += '<h3>' + esc(cat) + '</h3><p>' + esc(info.desc) + '</p>';
-      h += '<span class="wiki-count">' + info.entries.length + ' 篇</span></div>';
-    });
-    h += '</div></div>';
-    el.innerHTML = h;
-  }
-
-  function showWikiCategory(cat) {
-    location.hash = '#wiki/' + encodeURIComponent(cat);
-    show($('#wiki-content'));
-    hide($('#dashboard')); hide($('#file-content')); hide($('#timeline-view')); hide($('#character-graph'));
-    var info = DATA.encyclopedia[cat];
-    if (!info) return;
-    var el = $('#wiki-content');
-    var h = '<div class="wiki-category">';
-    h += '<a class="wiki-back" onclick="APP.renderWikiHome()">&larr; 返回百科</a>';
-    h += '<h2>' + esc(cat) + '</h2><p class="wiki-cat-desc">' + esc(info.desc) + '</p>';
-    h += '<div class="wiki-entries">';
-    info.entries.forEach(function (entry) {
-      h += '<div class="wiki-entry" onclick="APP.openFile(\'' + esc(entry.file.replace(/'/g, "\\'")) + '\')">';
-      h += '<h3>' + esc(entry.title) + '</h3><p>' + esc(entry.summary) + '</p></div>';
-    });
-    h += '</div></div>';
-    el.innerHTML = h;
-  }
-
-  // ═══════════════════════════════════════════
-  // 弹窗与键盘
-  // ═══════════════════════════════════════════
-  function toggleModal(id) { var el = $('#' + id); if (el) el.classList.toggle('hidden'); }
-
-  function handleKey(e) {
-    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') { if (e.key === 'Escape') e.target.blur(); return; }
-    if (e.key === '/' || (e.ctrlKey && e.key === 'k')) { e.preventDefault(); switchTab('search'); var si = $('#search-input'); if (si) si.focus(); }
-    else if (e.key === 'Escape') {
-      if (!$('#reading-overlay').classList.contains('hidden')) { closeReading(); return; }
-      if (!$('#help-modal').classList.contains('hidden')) { hide($('#help-modal')); return; }
-      if (!$('#char-detail-modal').classList.contains('hidden')) { hide($('#char-detail-modal')); return; }
-      document.body.classList.remove('sidebar-open');
-      location.hash = '';
+  /* ═══════════════════════════════════════════
+     Tree 组件
+     ═══════════════════════════════════════════ */
+  var TreeNode = {
+    name: 'TreeNode',
+    props: ['name', 'node', 'prefix', 'filter', 'progress'],
+    emits: ['open-file', 'toggle-dir'],
+    template: '<div v-if="isDir" class="tree-dir">' +
+      '<div class="tree-dir-label" @click="toggle">' +
+        '<span class="tree-arrow" :class="{ expanded: open }">&#9654;</span> {{ name }}' +
+      '</div>' +
+      '<div class="tree-children" v-show="open">' +
+        '<tree-node v-for="(val, key) in node" :key="key" :name="key" :node="val" ' +
+          ':prefix="prefix + \'/\' + key" :filter="filter" :progress="progress" ' +
+          '@open-file="$emit(\'open-file\', $event)" @toggle-dir="$emit(\'toggle-dir\', $event)" />' +
+      '</div>' +
+    '</div>' +
+    '<div v-else-if="visible" class="tree-file" @click="$emit(\'open-file\', prefix)">' +
+      '<span v-if="isFileRead" class="read-mark">&#10003;</span>{{ name }}' +
+    '</div>',
+    data: function () { return { open: false }; },
+    computed: {
+      isDir: function () { return this.node !== null && typeof this.node === 'object'; },
+      visible: function () {
+        if (!this.filter) return true;
+        return this.name.toLowerCase().indexOf(this.filter.toLowerCase()) >= 0;
+      },
+      isFileRead: function () {
+        return this.progress[this.prefix] && this.progress[this.prefix].read;
+      }
+    },
+    methods: {
+      toggle: function () { this.open = !this.open; }
+    },
+    watch: {
+      filter: function (val) { if (val) this.open = true; }
     }
-    else if (e.key === 'ArrowLeft') navChapter(-1);
-    else if (e.key === 'ArrowRight') navChapter(1);
-    else if (e.ctrlKey && e.key === 'r') { e.preventDefault(); toggleReadingMode(); }
-    else if (e.key === '?') toggleModal('help-modal');
-  }
-
-  // ═══════════════════════════════════════════
-  // 公开 API
-  // ═══════════════════════════════════════════
-  window.APP = {
-    openFile: openFile, toggleDir: toggleDir, toggleNovelVol: toggleNovelVol,
-    openNovelChapter: openNovelChapter, switchTab: switchTab, scrollToHeading: scrollToHeading,
-    showWikiCategory: showWikiCategory, renderWikiHome: renderWikiHome,
-    navChapter: navChapter, openReading: openReading, closeReading: closeReading,
   };
 
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
-  else init();
+  /* ═══════════════════════════════════════════
+     Vue App
+     ═══════════════════════════════════════════ */
+  var app = Vue.createApp({
+    setup: function () {
+      /* ── 响应式状态 ── */
+      var tab = ref('home');
+      var view = ref('dashboard'); // dashboard | file | timeline | wiki | characters | stats
+      var theme = ref(lsGet('aibot_theme', ''));
+      var fontSize = ref(lsGetInt('aibot_fontsize', 16));
+      var sidebarCollapsed = ref(lsGet('aibot_sidebar', '0') === '1');
+      var mobileOpen = ref(false);
+      var currentFile = ref(null);
+      var novelMode = ref(false);
+      var currentVolIdx = ref(null);
+      var currentChIdx = ref(null);
+      var showHelp = ref(false);
+      var fileFilter = ref('');
+      var searchQuery = ref('');
+      var searchResults = ref([]);
+      var tlFilter = ref('all');
+      var wikiCategory = ref(null);
+      var charDetail = ref(null);
+      var progress = ref(getProgress());
+      var expanded = ref({});
+      var renderedHTML = ref('');
+      var tocHeadings = ref([]);
+      var tocVisible = ref(false);
+      var activeTocSlug = ref('');
+      var scrollPct = ref(0);
+      var graphInstance = ref(null);
+
+      /* ── 阅读模式状态 ── */
+      var readingMode = ref(false);
+      var readingFontSize = ref(lsGetInt('aibot_rfontsize', 20));
+      var readingTheme = ref(lsGet('aibot_rtheme', ''));
+      var readingWidth = ref(lsGet('aibot_rwidth', 'normal'));
+      var readingScrollPct = ref(0);
+      var readingHTML = ref('');
+
+      /* ── refs ── */
+      var contentEl = ref(null);
+      var graphCanvas = ref(null);
+      var readingBody = ref(null);
+      var searchInput = ref(null);
+
+      /* ── 侧边栏Tab定义 ── */
+      var tabs = [
+        { id: 'home', label: '首页', icon: '<path d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-4 0a1 1 0 01-1-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 01-1 1" stroke="currentColor" stroke-width="1.5" fill="none"/>' },
+        { id: 'novels', label: '小说', icon: '<path d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" stroke="currentColor" stroke-width="1.5" fill="none"/>' },
+        { id: 'files', label: '文件', icon: '<path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" stroke="currentColor" stroke-width="1.5" fill="none"/>' },
+        { id: 'characters', label: '人物', icon: '<path d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" stroke="currentColor" stroke-width="1.5" fill="none"/>' },
+        { id: 'timeline', label: '时间线', icon: '<path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" stroke="currentColor" stroke-width="1.5" fill="none"/>' },
+        { id: 'wiki', label: '百科', icon: '<path d="M12 6.253v13m0-13c-2.198-.926-4.708-1.252-7.284-.81M12 6.253c2.198-.926 4.708-1.252 7.284-.81M4.716 5.443A9.97 9.97 0 003 11.25C3 16.635 7.365 21 12.75 21c.638 0 1.262-.061 1.866-.178" stroke="currentColor" stroke-width="1.5" fill="none"/>' },
+        { id: 'search', label: '搜索', icon: '<path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" stroke="currentColor" stroke-width="1.5" fill="none"/>' },
+        { id: 'stats', label: '统计', icon: '<path d="M3 13h4v8H3zm7-5h4v13h-4zm7-5h4v18h-4z" stroke="currentColor" stroke-width="1.5" fill="none"/>' }
+      ];
+
+      /* ── 计算属性 ── */
+      var totalChapters = computed(function () { return allChapters.length; });
+
+      var readCount = computed(function () {
+        var p = progress.value;
+        var count = 0;
+        allChapters.forEach(function (c) {
+          var fpath = '小说/' + c + '.md';
+          if (p[fpath] && p[fpath].read) count++;
+        });
+        return count;
+      });
+
+      var lastReadFile = computed(function () {
+        var p = progress.value;
+        var best = null, bestTime = 0;
+        Object.keys(p).forEach(function (k) {
+          if (p[k].lastTime > bestTime) { bestTime = p[k].lastTime; best = k; }
+        });
+        return best;
+      });
+
+      var lastReadName = computed(function () {
+        if (!lastReadFile.value) return '';
+        return lastReadFile.value.split('/').pop().replace('.md', '').replace(/_/g, ' ');
+      });
+
+      var filteredTimeline = computed(function () {
+        var events = DATA.timeline;
+        if (tlFilter.value && tlFilter.value !== 'all') {
+          events = events.filter(function (e) { return e.vol === tlFilter.value; });
+        }
+        return events;
+      });
+
+      var charRelations = computed(function () {
+        if (!charDetail.value) return [];
+        var id = charDetail.value.id;
+        return DATA.relationships.edges.filter(function (e) {
+          return e.source === id || e.target === id;
+        }).map(function (e) {
+          return { other: e.source === id ? e.target : e.source, label: e.label };
+        });
+      });
+
+      var maxVolChars = computed(function () {
+        var max = 0;
+        DATA.volumes.forEach(function (v) { if (v.chars > max) max = v.chars; });
+        return max || 1;
+      });
+
+      var maxChapterChars = computed(function () {
+        var max = 0;
+        DATA.volumes.forEach(function (v) {
+          v.chapterChars.forEach(function (c) { if (c > max) max = c; });
+        });
+        return max || 1;
+      });
+
+      var sortedChapters = computed(function () {
+        var list = [];
+        DATA.volumes.forEach(function (v) {
+          v.chapters.forEach(function (ch, ci) {
+            list.push({ path: ch, chars: v.chapterChars[ci] });
+          });
+        });
+        list.sort(function (a, b) { return b.chars - a.chars; });
+        return list;
+      });
+
+      var chapterProgressText = computed(function () {
+        if (currentVolIdx.value === null) return '';
+        var globalIdx = 0;
+        for (var i = 0; i < currentVolIdx.value; i++) globalIdx += DATA.volumes[i].chapters.length;
+        globalIdx += currentChIdx.value;
+        return (globalIdx + 1) + ' / ' + allChapters.length;
+      });
+
+      var canPrevChapter = computed(function () {
+        if (currentVolIdx.value === null) return false;
+        var globalIdx = 0;
+        for (var i = 0; i < currentVolIdx.value; i++) globalIdx += DATA.volumes[i].chapters.length;
+        return (globalIdx + currentChIdx.value) > 0;
+      });
+
+      var canNextChapter = computed(function () {
+        if (currentVolIdx.value === null) return false;
+        var globalIdx = 0;
+        for (var i = 0; i < currentVolIdx.value; i++) globalIdx += DATA.volumes[i].chapters.length;
+        return (globalIdx + currentChIdx.value) < allChapters.length - 1;
+      });
+
+      var readingTitle = computed(function () {
+        if (!currentFile.value) return '';
+        return currentFile.value.split('/').pop().replace('.md', '').replace(/_/g, ' ');
+      });
+
+      var readingCharsText = computed(function () {
+        if (!currentFile.value) return '';
+        var c = DATA.fileChars[currentFile.value];
+        return c ? formatChars(c) : '';
+      });
+
+      var readingTimeText = computed(function () {
+        if (!currentFile.value) return '';
+        var c = DATA.fileChars[currentFile.value];
+        return c ? '~' + Math.ceil(c / 500) + '分钟' : '';
+      });
+
+      var readingMaxWidth = computed(function () {
+        if (readingWidth.value === 'wide') return '900px';
+        if (readingWidth.value === 'full') return '100%';
+        return '680px';
+      });
+
+      var readingWidthLabel = computed(function () {
+        if (readingWidth.value === 'wide') return '宽';
+        if (readingWidth.value === 'full') return '满';
+        return '窄';
+      });
+
+      var readingThemeLabel = computed(function () {
+        if (readingTheme.value === 'sepia') return '暖';
+        if (readingTheme.value === 'green') return '绿';
+        if (readingTheme.value === 'dark') return '暗';
+        return '默';
+      });
+
+      /* ── 方法 ── */
+      function formatNum(n) { return n ? n.toLocaleString() : '0'; }
+      function formatChars(n) {
+        if (!n) return '0';
+        if (n >= 10000) return (n / 10000).toFixed(1).replace(/\.0$/, '') + '万字';
+        return n.toLocaleString() + '字';
+      }
+
+      function chapterName(ch) {
+        return ch.split('/').pop().replace(/_/g, ' ');
+      }
+
+      function isRead(path) {
+        return progress.value[path] && progress.value[path].read;
+      }
+
+      function volColor(volId) {
+        for (var i = 0; i < DATA.volumes.length; i++) {
+          if (DATA.volumes[i].id === volId) return DATA.volumes[i].color;
+        }
+        return 'var(--accent)';
+      }
+
+      function volReadPct(vol) {
+        var p = progress.value;
+        var read = 0;
+        vol.chapters.forEach(function (c) {
+          if (p['小说/' + c + '.md'] && p['小说/' + c + '.md'].read) read++;
+        });
+        return (read / vol.chapters.length * 100);
+      }
+
+      function toggleExpand(key, forceOpen) {
+        if (forceOpen) {
+          expanded.value[key] = true;
+        } else {
+          expanded.value[key] = !expanded.value[key];
+        }
+        // Vue 3 reactivity: we need a new object reference
+        expanded.value = Object.assign({}, expanded.value);
+      }
+
+      function switchTab(t) {
+        tab.value = t;
+        mobileOpen.value = false;
+        if (t === 'home') { view.value = 'dashboard'; currentFile.value = null; novelMode.value = false; tocVisible.value = false; }
+        else if (t === 'characters') { view.value = 'characters'; tocVisible.value = false; initGraph(); }
+        else if (t === 'timeline') { view.value = 'timeline'; tocVisible.value = false; }
+        else if (t === 'wiki') { view.value = 'wiki'; wikiCategory.value = null; tocVisible.value = false; }
+        else if (t === 'stats') { view.value = 'stats'; tocVisible.value = false; }
+        else if (t === 'search') {
+          nextTick(function () {
+            if (searchInput.value) searchInput.value.focus();
+          });
+        }
+      }
+
+      function openFile(path) {
+        currentFile.value = path;
+        novelMode.value = false;
+        view.value = 'file';
+
+        var content = DATA.files[path];
+        if (!content) {
+          renderedHTML.value = '<p>文件未找到: ' + esc(path) + '</p>';
+          tocHeadings.value = [];
+          return;
+        }
+
+        var result = renderMarkdown(content);
+        renderedHTML.value = result.html;
+        tocHeadings.value = result.headings;
+        tocVisible.value = result.headings.length > 0;
+
+        // Save progress
+        saveProgressData(path, { read: true, lastTime: Date.now() });
+        progress.value = getProgress();
+
+        // Scroll to saved position
+        nextTick(function () {
+          var el = contentEl.value;
+          if (!el) return;
+          var prog = progress.value[path];
+          if (prog && prog.scrollPos) el.scrollTop = prog.scrollPos;
+          else el.scrollTop = 0;
+        });
+
+        location.hash = '#file/' + encodeURIComponent(path);
+      }
+
+      function openNovelChapter(chapterPath) {
+        novelMode.value = true;
+        for (var vi = 0; vi < DATA.volumes.length; vi++) {
+          var vol = DATA.volumes[vi];
+          var ci = vol.chapters.indexOf(chapterPath);
+          if (ci >= 0) { currentVolIdx.value = vi; currentChIdx.value = ci; break; }
+        }
+        var fpath = '小说/' + chapterPath + '.md';
+        currentFile.value = fpath;
+        view.value = 'file';
+
+        var content = DATA.files[fpath];
+        if (!content) {
+          renderedHTML.value = '<p>章节未找到</p>';
+          tocHeadings.value = [];
+          return;
+        }
+
+        var result = renderMarkdown(content);
+        renderedHTML.value = result.html;
+        tocHeadings.value = result.headings;
+        tocVisible.value = result.headings.length > 0;
+
+        saveProgressData(fpath, { read: true, lastTime: Date.now() });
+        progress.value = getProgress();
+
+        nextTick(function () {
+          if (contentEl.value) contentEl.value.scrollTop = 0;
+        });
+
+        location.hash = '#novel/' + encodeURIComponent(chapterPath);
+      }
+
+      function navChapter(dir) {
+        if (!novelMode.value || currentVolIdx.value === null) return;
+        var globalIdx = 0;
+        for (var i = 0; i < currentVolIdx.value; i++) globalIdx += DATA.volumes[i].chapters.length;
+        globalIdx += currentChIdx.value;
+        var newIdx = globalIdx + dir;
+        if (newIdx < 0 || newIdx >= allChapters.length) return;
+        openNovelChapter(allChapters[newIdx]);
+      }
+
+      function showWikiCategory(cat) {
+        wikiCategory.value = cat;
+        view.value = 'wiki';
+        tab.value = 'wiki';
+        location.hash = '#wiki/' + encodeURIComponent(cat);
+      }
+
+      /* ── 搜索 ── */
+      function doSearch() {
+        var q = searchQuery.value.trim().toLowerCase();
+        if (!q) { searchResults.value = []; return; }
+        var matches = [];
+        Object.keys(DATA.files).forEach(function (path) {
+          var nameMatch = path.toLowerCase().indexOf(q) >= 0;
+          var content = DATA.files[path];
+          var lines = content.split('\n');
+          var lineMatches = [];
+          for (var i = 0; i < lines.length && lineMatches.length < 3; i++) {
+            if (lines[i].toLowerCase().indexOf(q) >= 0) {
+              lineMatches.push({ num: i + 1, text: lines[i] });
+            }
+          }
+          if (nameMatch || lineMatches.length) {
+            matches.push({ path: path, nameMatch: nameMatch, lines: lineMatches });
+          }
+        });
+        matches.sort(function (a, b) { return (b.nameMatch ? 1 : 0) - (a.nameMatch ? 1 : 0); });
+        searchResults.value = matches.slice(0, 30);
+      }
+      var doSearchDebounced = debounce(doSearch, 200);
+
+      function highlightText(text, q) {
+        if (!q) return esc(text);
+        var escaped = esc(text);
+        var regex = new RegExp('(' + q.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'gi');
+        return escaped.replace(regex, '<mark>$1</mark>');
+      }
+
+      function truncate(s, len) { return s.length > len ? s.slice(0, len) + '...' : s; }
+
+      /* ── 主题 ── */
+      function toggleTheme() {
+        theme.value = theme.value === 'dark' ? '' : 'dark';
+        document.documentElement.setAttribute('data-theme', theme.value);
+        localStorage.setItem('aibot_theme', theme.value);
+      }
+
+      function changeFontSize(delta) {
+        fontSize.value = clamp(fontSize.value + delta, 12, 24);
+        document.documentElement.style.setProperty('--font-size', fontSize.value + 'px');
+        localStorage.setItem('aibot_fontsize', fontSize.value);
+      }
+
+      /* ── 阅读模式 ── */
+      function toggleReadingMode() {
+        if (readingMode.value) {
+          readingMode.value = false;
+        } else {
+          openReading();
+        }
+      }
+
+      function openReading() {
+        if (!currentFile.value) return;
+        var content = DATA.files[currentFile.value];
+        if (!content) return;
+        var result = renderMarkdown(content);
+        readingHTML.value = result.html;
+        readingMode.value = true;
+        readingScrollPct.value = 0;
+        nextTick(function () {
+          if (readingBody.value) readingBody.value.scrollTop = 0;
+        });
+      }
+
+      function cycleReadingWidth() {
+        var cycle = { normal: 'wide', wide: 'full', full: 'normal' };
+        readingWidth.value = cycle[readingWidth.value] || 'normal';
+        localStorage.setItem('aibot_rwidth', readingWidth.value);
+      }
+
+      function cycleReadingTheme() {
+        var cycle = { '': 'sepia', sepia: 'green', green: 'dark', dark: '' };
+        readingTheme.value = cycle[readingTheme.value] || '';
+        localStorage.setItem('aibot_rtheme', readingTheme.value);
+      }
+
+      function onReadingScroll() {
+        var el = readingBody.value;
+        if (!el) return;
+        var pct = el.scrollHeight <= el.clientHeight ? 100 : (el.scrollTop / (el.scrollHeight - el.clientHeight)) * 100;
+        readingScrollPct.value = pct;
+      }
+
+      /* ── 内容滚动 ── */
+      function onContentScroll() {
+        var el = contentEl.value;
+        if (!el) return;
+
+        // Progress bar
+        if (el.scrollHeight > el.clientHeight) {
+          scrollPct.value = (el.scrollTop / (el.scrollHeight - el.clientHeight)) * 100;
+        }
+
+        // Save scroll position
+        if (currentFile.value) {
+          saveProgressData(currentFile.value, { scrollPos: el.scrollTop });
+        }
+
+        // Auto-mark as read at 80%
+        if (currentFile.value && scrollPct.value > 80) {
+          saveProgressData(currentFile.value, { read: true, lastTime: Date.now() });
+          progress.value = getProgress();
+        }
+
+        // TOC highlight
+        highlightTOC(el);
+      }
+
+      function highlightTOC(container) {
+        var headings = container.querySelectorAll('.md-body h1, .md-body h2, .md-body h3, .md-body h4');
+        var current = '';
+        headings.forEach(function (h) {
+          if (h.offsetTop - 80 <= container.scrollTop) current = h.id;
+        });
+        activeTocSlug.value = current;
+      }
+
+      function scrollToHeading(slug) {
+        var el = document.getElementById(slug);
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+
+      /* ── 角色图谱 ── */
+      function initGraph() {
+        nextTick(function () {
+          var canvas = graphCanvas.value;
+          if (!canvas) return;
+          var container = canvas.parentElement;
+          canvas.width = container.clientWidth || 800;
+          canvas.height = container.clientHeight || 600;
+          if (graphInstance.value) graphInstance.value.destroy();
+          graphInstance.value = createGraph(canvas, theme, function (node) {
+            charDetail.value = node;
+          });
+        });
+      }
+
+      function highlightCharNode(name) {
+        if (graphInstance.value) graphInstance.value.highlightNode(name);
+        else {
+          switchTab('characters');
+          nextTick(function () {
+            if (graphInstance.value) graphInstance.value.highlightNode(name);
+          });
+        }
+      }
+
+      /* ── Hash 路由 ── */
+      function handleHash() {
+        var h = location.hash.slice(1);
+        if (!h) { switchTab('home'); return; }
+        var parts = h.split('/');
+        var cmd = decodeURIComponent(parts[0]);
+        var arg = parts.slice(1).map(decodeURIComponent).join('/');
+        if (cmd === 'file' && arg) { tab.value = 'files'; openFile(arg); }
+        else if (cmd === 'novel' && arg) { tab.value = 'novels'; openNovelChapter(arg); }
+        else if (cmd === 'search' && arg) { tab.value = 'search'; searchQuery.value = arg; doSearch(); }
+        else if (cmd === 'timeline') { switchTab('timeline'); }
+        else if (cmd === 'wiki') { tab.value = 'wiki'; view.value = 'wiki'; if (arg) wikiCategory.value = arg; }
+        else if (cmd === 'char' && arg) { switchTab('characters'); nextTick(function () { highlightCharNode(arg); }); }
+        else if (cmd === 'stats') { switchTab('stats'); }
+        else { switchTab('home'); }
+      }
+
+      /* ── 键盘快捷键 ── */
+      function handleKey(e) {
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+          if (e.key === 'Escape') e.target.blur();
+          return;
+        }
+        if (e.key === '/' || (e.ctrlKey && e.key === 'k')) {
+          e.preventDefault();
+          switchTab('search');
+        } else if (e.key === 'Escape') {
+          if (readingMode.value) { readingMode.value = false; return; }
+          if (showHelp.value) { showHelp.value = false; return; }
+          if (charDetail.value) { charDetail.value = null; return; }
+          mobileOpen.value = false;
+          location.hash = '';
+          switchTab('home');
+        } else if (e.key === 'ArrowLeft') { navChapter(-1); }
+        else if (e.key === 'ArrowRight') { navChapter(1); }
+        else if (e.ctrlKey && e.key === 'r') { e.preventDefault(); toggleReadingMode(); }
+        else if (e.key === '+' || e.key === '=') { changeFontSize(2); }
+        else if (e.key === '-') { changeFontSize(-2); }
+        else if (e.key === '?') { showHelp.value = !showHelp.value; }
+        else if (e.key === 'H' || e.key === 'h') { switchTab('home'); location.hash = ''; }
+      }
+
+      /* ── 生命周期 ── */
+      onMounted(function () {
+        // Apply theme
+        document.documentElement.setAttribute('data-theme', theme.value);
+        document.documentElement.style.setProperty('--font-size', fontSize.value + 'px');
+
+        // Keyboard
+        document.addEventListener('keydown', handleKey);
+
+        // Hash routing
+        handleHash();
+        window.addEventListener('hashchange', handleHash);
+      });
+
+      onUnmounted(function () {
+        document.removeEventListener('keydown', handleKey);
+        window.removeEventListener('hashchange', handleHash);
+        if (graphInstance.value) graphInstance.value.destroy();
+      });
+
+      /* ── Watch ── */
+      watch(readingFontSize, function (v) { localStorage.setItem('aibot_rfontsize', v); });
+
+      return {
+        /* 数据 */
+        DATA: DATA,
+        tabs: tabs,
+        groupColors: GROUP_COLORS,
+        novelTotalChars: novelTotalChars,
+
+        /* 状态 */
+        tab: tab,
+        view: view,
+        theme: theme,
+        fontSize: fontSize,
+        sidebarCollapsed: sidebarCollapsed,
+        mobileOpen: mobileOpen,
+        currentFile: currentFile,
+        novelMode: novelMode,
+        showHelp: showHelp,
+        fileFilter: fileFilter,
+        searchQuery: searchQuery,
+        searchResults: searchResults,
+        tlFilter: tlFilter,
+        wikiCategory: wikiCategory,
+        charDetail: charDetail,
+        progress: progress,
+        expanded: expanded,
+        renderedHTML: renderedHTML,
+        tocHeadings: tocHeadings,
+        tocVisible: tocVisible,
+        activeTocSlug: activeTocSlug,
+        scrollPct: scrollPct,
+
+        /* 阅读模式 */
+        readingMode: readingMode,
+        readingFontSize: readingFontSize,
+        readingTheme: readingTheme,
+        readingWidth: readingWidth,
+        readingScrollPct: readingScrollPct,
+        readingHTML: readingHTML,
+        readingMaxWidth: readingMaxWidth,
+        readingWidthLabel: readingWidthLabel,
+        readingThemeLabel: readingThemeLabel,
+        readingTitle: readingTitle,
+        readingCharsText: readingCharsText,
+        readingTimeText: readingTimeText,
+
+        /* 计算属性 */
+        totalChapters: totalChapters,
+        readCount: readCount,
+        lastReadFile: lastReadFile,
+        lastReadName: lastReadName,
+        filteredTimeline: filteredTimeline,
+        charRelations: charRelations,
+        maxVolChars: maxVolChars,
+        maxChapterChars: maxChapterChars,
+        sortedChapters: sortedChapters,
+        chapterProgressText: chapterProgressText,
+        canPrevChapter: canPrevChapter,
+        canNextChapter: canNextChapter,
+
+        /* refs */
+        contentEl: contentEl,
+        graphCanvas: graphCanvas,
+        readingBody: readingBody,
+        searchInput: searchInput,
+
+        /* 方法 */
+        formatNum: formatNum,
+        formatChars: formatChars,
+        chapterName: chapterName,
+        isRead: isRead,
+        volColor: volColor,
+        volReadPct: volReadPct,
+        toggleExpand: toggleExpand,
+        switchTab: switchTab,
+        openFile: openFile,
+        openNovelChapter: openNovelChapter,
+        navChapter: navChapter,
+        showWikiCategory: showWikiCategory,
+        toggleTheme: toggleTheme,
+        changeFontSize: changeFontSize,
+        toggleReadingMode: toggleReadingMode,
+        cycleReadingWidth: cycleReadingWidth,
+        cycleReadingTheme: cycleReadingTheme,
+        onReadingScroll: onReadingScroll,
+        onContentScroll: onContentScroll,
+        scrollToHeading: scrollToHeading,
+        highlightCharNode: highlightCharNode,
+        highlightText: highlightText,
+        truncate: truncate,
+        doSearchDebounced: doSearchDebounced,
+        initGraph: initGraph
+      };
+    }
+  });
+
+  /* 注册 TreeNode 组件 */
+  app.component('tree-node', TreeNode);
+
+  /* 挂载 */
+  app.mount('#app');
+
 })();
