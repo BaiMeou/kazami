@@ -41,10 +41,13 @@
   var PROGRESS_KEY = 'aibot_reading_progress';
   function getProgress() { try { return JSON.parse(localStorage.getItem(PROGRESS_KEY)) || {}; } catch (e) { return {}; } }
   function saveProgressData(path, data) {
-    var p = getProgress();
-    p[path] = Object.assign(p[path] || {}, data);
-    localStorage.setItem(PROGRESS_KEY, JSON.stringify(p));
+    try {
+      var p = getProgress();
+      p[path] = Object.assign(p[path] || {}, data);
+      localStorage.setItem(PROGRESS_KEY, JSON.stringify(p));
+    } catch (e) { /* QuotaExceededError or Private mode — silently skip */ }
   }
+  function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* ignore */ } }
   function lsGet(k, d) { var v = localStorage.getItem(k); return v !== null ? v : d; }
   function lsGetInt(k, d) { var v = parseInt(localStorage.getItem(k), 10); return isNaN(v) ? d : v; }
 
@@ -167,30 +170,35 @@
       return null;
     }
 
-    canvas.addEventListener('mousedown', function (e) {
+    function onMousedown(e) {
       var rect = canvas.getBoundingClientRect();
       var node = findNodeAt(e.clientX - rect.left, e.clientY - rect.top);
       if (node) { dragging = node; node.vx = 0; node.vy = 0; }
-    });
-    canvas.addEventListener('mousemove', function (e) {
+    }
+    function onMousemove(e) {
       var rect = canvas.getBoundingClientRect();
       var x = e.clientX - rect.left, y = e.clientY - rect.top;
       if (dragging) { dragging.x = (x - offset.x) / scale; dragging.y = (y - offset.y) / scale; }
       hover = findNodeAt(x, y);
       canvas.style.cursor = hover ? 'pointer' : 'default';
-    });
-    canvas.addEventListener('mouseup', function () { dragging = null; });
-    canvas.addEventListener('wheel', function (e) {
+    }
+    function onMouseup() { dragging = null; }
+    function onWheel(e) {
       e.preventDefault();
       var d = e.deltaY > 0 ? 0.9 : 1.1;
       scale = Math.max(0.3, Math.min(3, scale * d));
-    }, { passive: false });
-    canvas.addEventListener('click', function (e) {
+    }
+    function onClick(e) {
       if (dragging) return;
       var rect = canvas.getBoundingClientRect();
       var node = findNodeAt(e.clientX - rect.left, e.clientY - rect.top);
       if (node && onClickNode) onClickNode(node);
-    });
+    }
+    canvas.addEventListener('mousedown', onMousedown);
+    canvas.addEventListener('mousemove', onMousemove);
+    canvas.addEventListener('mouseup', onMouseup);
+    canvas.addEventListener('wheel', onWheel, { passive: false });
+    canvas.addEventListener('click', onClick);
 
     function animate() {
       var ctx = canvas.getContext('2d');
@@ -265,7 +273,14 @@
     animate();
 
     return {
-      destroy: function () { if (animId) cancelAnimationFrame(animId); },
+      destroy: function () {
+        if (animId) cancelAnimationFrame(animId);
+        canvas.removeEventListener('mousedown', onMousedown);
+        canvas.removeEventListener('mousemove', onMousemove);
+        canvas.removeEventListener('mouseup', onMouseup);
+        canvas.removeEventListener('wheel', onWheel);
+        canvas.removeEventListener('click', onClick);
+      },
       highlightNode: function (name) {
         var node = nodes.find(function (n) { return n.id === name; });
         if (node && onClickNode) onClickNode(node);
@@ -676,13 +691,13 @@
       function toggleTheme() {
         theme.value = theme.value === 'dark' ? '' : 'dark';
         document.documentElement.setAttribute('data-theme', theme.value);
-        localStorage.setItem('aibot_theme', theme.value);
+        lsSet('aibot_theme', theme.value);
       }
 
       function changeFontSize(delta) {
         fontSize.value = clamp(fontSize.value + delta, 12, 24);
         document.documentElement.style.setProperty('--font-size', fontSize.value + 'px');
-        localStorage.setItem('aibot_fontsize', fontSize.value);
+        lsSet('aibot_fontsize', fontSize.value);
       }
 
       /* ── 阅读模式 ── */
@@ -710,13 +725,13 @@
       function cycleReadingWidth() {
         var cycle = { normal: 'wide', wide: 'full', full: 'normal' };
         readingWidth.value = cycle[readingWidth.value] || 'normal';
-        localStorage.setItem('aibot_rwidth', readingWidth.value);
+        lsSet('aibot_rwidth', readingWidth.value);
       }
 
       function cycleReadingTheme() {
         var cycle = { '': 'sepia', sepia: 'green', green: 'dark', dark: '' };
         readingTheme.value = cycle[readingTheme.value] || '';
-        localStorage.setItem('aibot_rtheme', readingTheme.value);
+        lsSet('aibot_rtheme', readingTheme.value);
       }
 
       function onReadingScroll() {
@@ -853,12 +868,12 @@
       });
 
       /* ── Watch ── */
-      watch(readingFontSize, function (v) { localStorage.setItem('aibot_rfontsize', v); });
+      watch(readingFontSize, function (v) { lsSet('aibot_rfontsize', v); });
 
       // Sync sidebar state to body for CSS selectors like body.sidebar-collapsed
       watch(sidebarCollapsed, function (v) {
         document.body.classList.toggle('sidebar-collapsed', v);
-        localStorage.setItem('aibot_sidebar', v ? '1' : '0');
+        lsSet('aibot_sidebar', v ? '1' : '0');
       }, { immediate: true });
 
       watch(mobileOpen, function (v) {
