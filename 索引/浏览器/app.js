@@ -139,7 +139,12 @@
   /* ═══════════════════════════════════════════
      角色关系图 (Canvas 2D)
      ═══════════════════════════════════════════ */
-  var GROUP_COLORS = { core: '#c24050', scb: '#4a90d9', baigui: '#5a9e6f', qingqiu: '#c9a96e', enemy: '#7a5ea7', friend: '#d4748a', school: '#5ab5b0' };
+  var GROUP_COLORS = {
+    core: '#c24050', scb: '#4a90d9', baigui: '#5a9e6f', qingqiu: '#c9a96e',
+    sanran: '#e08040', nekomata: '#d4748a', tsuchimikado: '#5ab5b0',
+    enemy: '#7a5ea7', neutral: '#888', weaver: '#6a8ab0',
+    friend: '#d4748a', school: '#5ab5b0', huangfu: '#7eaa55'
+  };
   var EDGE_COLORS = { love: '#c24050', family: '#c9a96e', friend: '#5a9e6f', enemy: '#7a5ea7', ally: '#4a90d9', neutral: '#888' };
 
   function createGraph(canvas, theme, onClickNode) {
@@ -335,7 +340,7 @@
     setup: function () {
       /* ── 响应式状态 ── */
       var tab = ref('home');
-      var view = ref('dashboard'); // dashboard | file | timeline | wiki | characters | stats
+      var view = ref('dashboard'); // dashboard | file | timeline | wiki | characters | factions | stats
       var theme = ref(lsGet('aibot_theme', ''));
       var fontSize = ref(lsGetInt('aibot_fontsize', 16));
       var sidebarCollapsed = ref(lsGet('aibot_sidebar', '0') === '1');
@@ -360,6 +365,38 @@
       var scrollPct = ref(0);
       var graphInstance = ref(null);
 
+      /* ── 书签系统 ── */
+      var BOOKMARKS_KEY = 'aibot_bookmarks';
+      var bookmarks = ref(JSON.parse(lsGet(BOOKMARKS_KEY, '[]')));
+
+      function addBookmark() {
+        if (!currentFile.value) return;
+        var el = contentEl.value;
+        var pct = el ? Math.round((el.scrollTop / (el.scrollHeight - el.clientHeight)) * 100) : 0;
+        var bm = {
+          id: Date.now(),
+          file: currentFile.value,
+          name: currentFile.value.split('/').pop().replace('.md', '').replace(/_/g, ' '),
+          pct: pct,
+          scrollPos: el ? el.scrollTop : 0,
+          time: new Date().toLocaleString('zh-CN')
+        };
+        bookmarks.value.push(bm);
+        lsSet(BOOKMARKS_KEY, JSON.stringify(bookmarks.value));
+      }
+
+      function removeBookmark(id) {
+        bookmarks.value = bookmarks.value.filter(function (b) { return b.id !== id; });
+        lsSet(BOOKMARKS_KEY, JSON.stringify(bookmarks.value));
+      }
+
+      function loadBookmark(bm) {
+        openFile(bm.file);
+        nextTick(function () {
+          if (contentEl.value) contentEl.value.scrollTop = bm.scrollPos;
+        });
+      }
+
       /* ── 阅读模式状态 ── */
       var readingMode = ref(false);
       var readingFontSize = ref(lsGetInt('aibot_rfontsize', 20));
@@ -383,6 +420,7 @@
         { id: 'timeline', label: '时间线', icon: '<path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" stroke="currentColor" stroke-width="1.5" fill="none"/>' },
         { id: 'wiki', label: '百科', icon: '<path d="M12 6.253v13m0-13c-2.198-.926-4.708-1.252-7.284-.81M12 6.253c2.198-.926 4.708-1.252 7.284-.81M4.716 5.443A9.97 9.97 0 003 11.25C3 16.635 7.365 21 12.75 21c.638 0 1.262-.061 1.866-.178" stroke="currentColor" stroke-width="1.5" fill="none"/>' },
         { id: 'search', label: '搜索', icon: '<path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" stroke="currentColor" stroke-width="1.5" fill="none"/>' },
+        { id: 'factions', label: '势力', icon: '<path d="M3.75 21h16.5M4.5 3h15M5.25 3v18m13.5-18v18M9 6.75h1.5m-1.5 3h1.5m-1.5 3h1.5m3-6H15m-1.5 3H15m-1.5 3H15M9 21v-3.375c0-.621.504-1.125 1.125-1.125h3.75c.621 0 1.125.504 1.125 1.125V21" stroke="currentColor" stroke-width="1.5" fill="none"/>' },
         { id: 'stats', label: '统计', icon: '<path d="M3 13h4v8H3zm7-5h4v13h-4zm7-5h4v18h-4z" stroke="currentColor" stroke-width="1.5" fill="none"/>' }
       ];
 
@@ -563,6 +601,7 @@
         else if (t === 'characters') { view.value = 'characters'; tocVisible.value = false; initGraph(); }
         else if (t === 'timeline') { view.value = 'timeline'; tocVisible.value = false; }
         else if (t === 'wiki') { view.value = 'wiki'; wikiCategory.value = null; tocVisible.value = false; }
+        else if (t === 'factions') { view.value = 'factions'; tocVisible.value = false; }
         else if (t === 'stats') { view.value = 'stats'; tocVisible.value = false; }
         else if (t === 'search') {
           nextTick(function () {
@@ -805,6 +844,22 @@
         }
       }
 
+      function openCharArchive(name) {
+        // 名字到文件名的映射（处理特殊情况）
+        var nameMap = {
+          '司衡·岚': '司衡岚',
+          '鸣海·枫': '鸣海枫',
+          '施言·白垣': '白垣',
+          '土御门·澄夜': '澄夜'
+        };
+        var fileName = nameMap[name] || name;
+        var archivePath = '角色/档案/' + fileName + '.md';
+        if (DATA.files[archivePath]) {
+          openFile(archivePath);
+          tab.value = 'files';
+        }
+      }
+
       /* ── Hash 路由 ── */
       function handleHash() {
         var h = location.hash.slice(1);
@@ -818,6 +873,7 @@
         else if (cmd === 'timeline') { switchTab('timeline'); }
         else if (cmd === 'wiki') { tab.value = 'wiki'; view.value = 'wiki'; if (arg) wikiCategory.value = arg; }
         else if (cmd === 'char' && arg) { switchTab('characters'); nextTick(function () { highlightCharNode(arg); }); }
+        else if (cmd === 'factions') { switchTab('factions'); }
         else if (cmd === 'stats') { switchTab('stats'); }
         else { switchTab('home'); }
       }
@@ -967,10 +1023,15 @@
         onContentScroll: onContentScroll,
         scrollToHeading: scrollToHeading,
         highlightCharNode: highlightCharNode,
+        openCharArchive: openCharArchive,
         highlightText: highlightText,
         truncate: truncate,
         doSearchDebounced: doSearchDebounced,
-        initGraph: initGraph
+        initGraph: initGraph,
+        bookmarks: bookmarks,
+        addBookmark: addBookmark,
+        removeBookmark: removeBookmark,
+        loadBookmark: loadBookmark
       };
     }
   });

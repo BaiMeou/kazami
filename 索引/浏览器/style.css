@@ -1209,6 +1209,58 @@ mark {
   transition: width 0.6s var(--ease-out);
 }
 
+/* Dashboard factions */
+.dash-factions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.dash-faction-axis {
+  background: var(--bg-card);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  padding: 14px 18px;
+  cursor: pointer;
+  transition: all var(--duration) var(--ease);
+  box-shadow: var(--shadow-xs);
+}
+
+.dash-faction-axis:hover {
+  box-shadow: var(--shadow-card-hover);
+  transform: translateY(-1px);
+}
+
+.dash-faction-axis-label {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  border-left: 3px solid;
+  padding-left: 8px;
+  margin-bottom: 8px;
+}
+
+.dash-faction-members {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.dash-faction-tag {
+  display: inline-block;
+  padding: 4px 12px;
+  border: 1px solid;
+  border-radius: var(--radius-xl);
+  font-size: 12px;
+  font-weight: 500;
+  transition: all var(--duration-fast) var(--ease);
+}
+
+.dash-faction-tag:hover {
+  background: var(--accent-soft);
+}
+
 /* Keyword tags */
 .keyword-tags {
   display: flex;
@@ -1259,6 +1311,80 @@ mark {
 .stat-label {
   font-size: 10px;
   color: var(--text-sidebar-muted);
+}
+
+/* ========== Bookmarks ========== */
+.bookmarks-section {
+  margin-top: 14px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-sidebar);
+}
+
+.bookmarks-title {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-sidebar-muted);
+  margin-bottom: 6px;
+  padding: 0 4px;
+}
+
+.bookmark-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 2px;
+}
+
+.bookmark-info {
+  flex: 1;
+  padding: 4px 8px;
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease);
+  overflow: hidden;
+}
+
+.bookmark-info:hover {
+  background: var(--bg-sidebar-hover);
+}
+
+.bookmark-name {
+  display: block;
+  font-size: 12px;
+  color: var(--text-sidebar);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bookmark-time {
+  font-size: 10px;
+  color: var(--text-sidebar-muted);
+}
+
+.bookmark-remove {
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  color: var(--text-sidebar-muted);
+  border-radius: var(--radius-xs);
+  flex-shrink: 0;
+  opacity: 0;
+  transition: all var(--duration-fast) var(--ease);
+}
+
+.bookmark-item:hover .bookmark-remove {
+  opacity: 1;
+}
+
+.bookmark-remove:hover {
+  background: var(--bg-sidebar-hover);
+  color: var(--accent);
 }
 
 /* ========== File content / Markdown ========== */
@@ -1651,6 +1777,170 @@ mark {
   font-size: 13px;
   color: var(--text-secondary);
   line-height: 1.5;
+}
+
+/* ========== Factions View ========== */
+#factions-view {
+  max-width: 960px;
+  margin: 0 auto;
+}
+
+.factions-header {
+  text-align: center;
+  padding: 32px 0 28px;
+}
+
+.factions-header h2 {
+  font-family: var(--font-serif);
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: 2px;
+  margin-bottom: 6px;
+}
+
+.factions-subtitle {
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
+.factions-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+}
+
+@media (max-width: 768px) {
+  .factions-grid { grid-template-columns: 1fr; }
+}
+
+.faction-axis-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  box-shadow: var(--shadow-xs);
+}
+
+.faction-axis-header {
+  padding: 16px 20px;
+  border-left: 4px solid var(--accent);
+  border-bottom: 1px solid var(--border-light);
+}
+
+.faction-axis-header h3 {
+  font-family: var(--font-serif);
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+
+.faction-member-card {
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border-light);
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease);
+}
+
+.faction-member-card:last-child {
+  border-bottom: none;
+}
+
+.faction-member-card:hover {
+  background: var(--bg-hover);
+}
+
+.faction-member-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.faction-member-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.faction-member-header h4 {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.faction-member-leader {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 2px;
+}
+
+.faction-member-desc {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+/* Faction sidebar */
+.faction-sidebar-list {
+  margin-bottom: 12px;
+}
+
+.faction-axis-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  padding: 4px 12px;
+  margin-bottom: 4px;
+}
+
+.faction-sidebar-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 12px;
+  font-size: 12px;
+  color: var(--text-sidebar-muted);
+  cursor: pointer;
+  border-radius: var(--radius-xs);
+  transition: all var(--duration-fast) var(--ease);
+}
+
+.faction-sidebar-item:hover {
+  background: var(--bg-sidebar-hover);
+  color: var(--text-sidebar);
+}
+
+.faction-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.faction-name {
+  font-weight: 500;
+}
+
+/* Character archive button */
+.char-archive-btn {
+  display: inline-block;
+  margin: 12px 0;
+  padding: 8px 18px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--duration-fast) var(--ease);
+}
+
+.char-archive-btn:hover {
+  background: var(--accent-hover);
+  transform: translateY(-1px);
 }
 
 /* ========== Stats View ========== */

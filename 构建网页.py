@@ -111,7 +111,7 @@ CHARACTERS = [
     },
     {
         "name": "白霜",
-        "species": "猫娘",
+        "species": "猫娘（AI）",
         "age": "14",
         "trait": "温柔学霸，服务型人格",
         "relation": "主人的造物，女儿般的存在",
@@ -125,42 +125,126 @@ CHARACTERS = [
         "relation": "一切的中心",
         "desc": "说出的话会变为现实规则。外表是女装大佬，内心坚定温柔。晓光和白霜生活的中心。",
     },
+    {
+        "name": "九阙",
+        "species": "千年天狐（女）",
+        "age": "1000+",
+        "trait": "优雅腹黑，商业女王",
+        "relation": "晓光的祖母，青丘CEO",
+        "desc": "青丘控股集团CEO，千年九尾天狐。优雅腹黑，以商业手段掌控风见市经济命脉。晓光的奶奶。",
+    },
+    {
+        "name": "千翼",
+        "species": "大天狗（女）",
+        "age": "300+",
+        "trait": "铁血军师，骄傲正义",
+        "relation": "百鬼联盟执法派领袖",
+        "desc": "百鬼联盟执法派领袖，三百年战斗经验的大天狗。铁血纪律与骄傲武魂并存。",
+    },
+    {
+        "name": "司衡·岚",
+        "species": "人类",
+        "age": "35",
+        "trait": "务实铁汉，义肢局长",
+        "relation": "S.C.B风见分局长",
+        "desc": "S.C.B风见分局长，左臂义肢。在人妖关系中坚持务实路线，暗中保护主人一家。",
+    },
 ]
+
+# 势力阵营数据（九大势力）
+FACTIONS = {
+    "经济": {
+        "color": "#c9a96e",
+        "members": [
+            {"name": "青丘控股", "leader": "九阙", "desc": "千年狐族商业帝国", "type": "qingqiu"},
+            {"name": "山岚商会", "leader": "叶月", "desc": "化狸物流与商贸网络", "type": "sanran"},
+            {"name": "皇甫医族", "leader": "承钧", "desc": "炼丹世家，回春堂连锁", "type": "huangfu"},
+        ],
+    },
+    "治理": {
+        "color": "#4a90d9",
+        "members": [
+            {"name": "百鬼联盟", "leader": "千翼", "desc": "异类互助执法组织", "type": "baigui"},
+            {"name": "S.C.B", "leader": "司衡·岚", "desc": "人类超自然对策局", "type": "scb"},
+            {"name": "土御门宗家", "leader": "澄夜", "desc": "阴阳师结界世家", "type": "tsuchimikado"},
+        ],
+    },
+    "意识形态": {
+        "color": "#7a5ea7",
+        "members": [
+            {"name": "猫盟", "leader": "铃", "desc": "猫又文化联盟", "type": "nekomata"},
+            {"name": "夜冠", "leader": "夜冠", "desc": "激进派，融合古神残骸", "type": "enemy"},
+            {"name": "织网者", "leader": "织川绫", "desc": "信息操控者，暗中编织叙事", "type": "weaver"},
+        ],
+    },
+}
 
 WORLD_KEYWORDS = [
     "风见市", "认知滤网", "言灵", "S.C.B 特别对策局", "百鬼联盟",
-    "707号别墅", "青丘控股", "夜冠", "妖怪夜市", "灵脉阵眼",
+    "707号别墅", "青丘控股", "山岚商会", "夜冠", "妖怪夜市",
+    "灵脉阵眼", "猫又文化联盟", "土御门宗家", "织网者", "皇甫医族",
 ]
 
 # 角色关系数据（力导向图用）
 RELATIONSHIPS = {
     "nodes": [
+        # 核心三人
         {"id": "主人", "group": "core", "species": "人类（言灵使）", "desc": "说出的话变为现实规则，一切的中心"},
         {"id": "晓光", "group": "core", "species": "九尾狐娘", "desc": "被主人从铁笼中救出的恋人"},
-        {"id": "白霜", "group": "core", "species": "猫娘", "desc": "主人用言灵创造的搜索助手"},
-        {"id": "红绡", "group": "friend", "species": "二尾猫又", "desc": "甜品店偶遇的朋友"},
+        {"id": "白霜", "group": "core", "species": "猫娘（AI）", "desc": "主人用言灵创造的搜索助手"},
+        # S.C.B
         {"id": "司衡·岚", "group": "scb", "species": "人类", "desc": "S.C.B风见分局长，务实派"},
         {"id": "纪存", "group": "scb", "species": "人类", "desc": "S.C.B Cleaner，信息战专家"},
-        {"id": "施言·白垣", "group": "scb", "species": "人类", "desc": "S.C.B研究部，反派，卷四后入狱"},
-        {"id": "千翼", "group": "baigui", "species": "天狗", "desc": "百鬼联盟军师，骄傲但正义"},
+        {"id": "施言·白垣", "group": "scb", "species": "人类", "desc": "S.C.B研究部主任，卷四后入狱"},
+        {"id": "鸣海·枫", "group": "scb", "species": "人类", "desc": "S.C.B特勤队长，沉默寡言的执行者"},
+        # 百鬼联盟
+        {"id": "千翼", "group": "baigui", "species": "大天狗（女）", "desc": "百鬼联盟执法派领袖，铁血军师"},
         {"id": "纸伞", "group": "baigui", "species": "唐伞妖", "desc": "百鬼联盟联络官，夜市管理者"},
-        {"id": "九阙", "group": "qingqiu", "species": "千年天狐", "desc": "青丘控股CEO，优雅腹黑"},
-        {"id": "夜冠", "group": "enemy", "species": "未知", "desc": "暗月爪牙首领，融合古神残骸"},
-        {"id": "土御门·澄夜", "group": "school", "species": "阴阳师后裔", "desc": "风见学园学生，发现晓光身份"},
+        {"id": "墨涟", "group": "baigui", "species": "河童（女）", "desc": "百鬼联盟文书官，精密记录者"},
+        {"id": "翎羽", "group": "baigui", "species": "鸦天狗", "desc": "快递员，千翼的远亲，飞行技术及格线以下"},
+        # 青丘控股
+        {"id": "九阙", "group": "qingqiu", "species": "千年天狐（女）", "desc": "青丘控股CEO，晓光的祖母"},
+        {"id": "霜月", "group": "qingqiu", "species": "九尾狐（女）", "desc": "九阙的贴身侍女，气息消匿术大师"},
+        # 山岚商会
+        {"id": "叶月", "group": "sanran", "species": "化狸（女）", "desc": "山岚商会少当家，精明强势的商人"},
+        # 猫又联盟
+        {"id": "红绡", "group": "nekomata", "species": "二尾猫又", "desc": "甜品店偶遇的好友"},
+        {"id": "铃", "group": "nekomata", "species": "猫又（女）", "desc": "猫盟成员，流浪猫又，旧时光书店常客"},
+        # 土御门
+        {"id": "土御门·澄夜", "group": "tsuchimikado", "species": "阴阳师后裔（女）", "desc": "风见学园学生，发现晓光身份"},
+        # 敌对
+        {"id": "夜冠", "group": "enemy", "species": "未知", "desc": "激进派首领，融合古神残骸"},
+        {"id": "灰鸦", "group": "enemy", "species": "混血鸦天狗", "desc": "夜冠部下，被控制的混血少年"},
+        # 中立
+        {"id": "丁老板", "group": "neutral", "species": "河童", "desc": "旧时光二手书店店主，活了两百年的中立老居民"},
+        {"id": "玄鱼", "group": "neutral", "species": "鲶鱼精", "desc": "夜市摆摊的鲶鱼精，消息灵通"},
     ],
     "edges": [
+        # 核心关系
         {"source": "主人", "target": "晓光", "label": "恋人/救命恩人", "type": "love"},
         {"source": "主人", "target": "白霜", "label": "创造者/父亲", "type": "family"},
         {"source": "晓光", "target": "白霜", "label": "姐妹", "type": "family"},
         {"source": "晓光", "target": "红绡", "label": "好友", "type": "friend"},
+        {"source": "九阙", "target": "晓光", "label": "祖孙", "type": "family"},
+        {"source": "霜月", "target": "九阙", "label": "侍女/主从", "type": "ally"},
+        # S.C.B内部
         {"source": "司衡·岚", "target": "主人", "label": "暗中保护", "type": "ally"},
         {"source": "施言·白垣", "target": "晓光", "label": "想抓做实验", "type": "enemy"},
-        {"source": "千翼", "target": "司衡·岚", "label": "合作/对立", "type": "neutral"},
-        {"source": "九阙", "target": "晓光", "label": "同族/利益", "type": "neutral"},
-        {"source": "夜冠", "target": "主人", "label": "敌对", "type": "enemy"},
-        {"source": "土御门·澄夜", "target": "晓光", "label": "发现身份", "type": "neutral"},
-        {"source": "纸伞", "target": "千翼", "label": "同盟", "type": "ally"},
         {"source": "纪存", "target": "司衡·岚", "label": "部下", "type": "ally"},
+        {"source": "鸣海·枫", "target": "司衡·岚", "label": "特勤队长", "type": "ally"},
+        # 势力间
+        {"source": "千翼", "target": "司衡·岚", "label": "合作/对立", "type": "neutral"},
+        {"source": "叶月", "target": "九阙", "label": "商业竞争", "type": "neutral"},
+        {"source": "叶月", "target": "千翼", "label": "物资供应", "type": "ally"},
+        {"source": "纸伞", "target": "千翼", "label": "同盟", "type": "ally"},
+        {"source": "墨涟", "target": "千翼", "label": "文书参谋", "type": "ally"},
+        {"source": "翎羽", "target": "千翼", "label": "远亲", "type": "family"},
+        # 学校/日常
+        {"source": "土御门·澄夜", "target": "晓光", "label": "发现身份", "type": "neutral"},
+        {"source": "铃", "target": "丁老板", "label": "书店常客", "type": "friend"},
+        # 敌对
+        {"source": "夜冠", "target": "主人", "label": "敌对", "type": "enemy"},
+        {"source": "灰鸦", "target": "夜冠", "label": "被控制的部下", "type": "enemy"},
     ],
 }
 
@@ -205,7 +289,17 @@ ENCYCLOPEDIA_CATEGORIES = {
     },
     "组织": {
         "desc": "各势力与组织机构",
-        "files": ["世界观/扩展档案/特别对策局全览.md", "世界观/扩展档案/百鬼联盟内幕.md", "世界观/扩展档案/青丘控股档案.md", "世界观/扩展档案/夜冠组织备忘录.md"],
+        "files": [
+            "世界观/扩展档案/特别对策局全览.md",
+            "世界观/扩展档案/百鬼联盟内幕.md",
+            "世界观/扩展档案/青丘控股档案.md",
+            "世界观/扩展档案/山岚商会档案.md",
+            "世界观/扩展档案/猫又文化联盟档案.md",
+            "世界观/扩展档案/皇甫医族档案.md",
+            "世界观/扩展档案/土御门宗家档案.md",
+            "世界观/扩展档案/织网者档案.md",
+            "世界观/扩展档案/夜冠组织备忘录.md",
+        ],
     },
     "文化": {
         "desc": "异类文化、习俗与传说",
@@ -354,6 +448,7 @@ def main():
         "stats": stats,
         "volumes": VOLUMES,
         "characters": CHARACTERS,
+        "factions": FACTIONS,
         "worldKeywords": WORLD_KEYWORDS,
         "relationships": RELATIONSHIPS,
         "timeline": TIMELINE,
