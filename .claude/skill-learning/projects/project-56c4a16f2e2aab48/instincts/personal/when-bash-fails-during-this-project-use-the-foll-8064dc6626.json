@@ -1,0 +1,23 @@
+{
+  "id": "when-bash-fails-during-this-project-use-the-foll-8064dc6626",
+  "scope": "project",
+  "projectId": "project-56c4a16f2e2aab48",
+  "projectName": "kazami",
+  "source": "session-observation",
+  "evidence": [
+    "{\"stdout\":\"\",\"stderr\":\"error: pathspec '番外/NSFW/白霜_发情期的效率报告.md' did not match any file(s) known to git\\n\",\"code\":1,\"interrupted\":false,\"name\":\"ShellError\"}",
+    "{\"data\":{\"stdout\":\"\",\"stderr\":\"\",\"interrupted\":false,\"isImage\":false,\"noOutputExpected\":false}}"
+  ],
+  "observationIds": [
+    "deeba2a0-8b63-4a0c-b97d-e686db031e87",
+    "600963cf-be2e-414d-b1ee-45e95dfca226"
+  ],
+  "trigger": "When Bash fails during this project",
+  "action": "Use the follow-up successful Bash invocation as the resolution pattern before retrying blindly.",
+  "confidence": 0.5,
+  "domain": "debugging",
+  "evidenceOutcome": "success",
+  "createdAt": "2026-04-27T00:03:39.870Z",
+  "updatedAt": "2026-04-27T00:03:39.870Z",
+  "status": "pending"
+}

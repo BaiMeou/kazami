@@ -60,7 +60,12 @@
       "Bash(mv README.md 说明.md)",
       "Bash(ls *.md)",
       "Bash(find . -name '*.md' -not -path './.git/*' -not -path './.claude/*' -not -path './归档/*' -exec wc -l {})",
-      "Bash(find \"D:/Desktop/AIbot\" -not -path \"*/.git/*\" -not -path \"*/.claude/*\" -not -path \"*/归档/*\" -name \"*.md\" -exec cat {} +)"
+      "Bash(find \"D:/Desktop/AIbot\" -not -path \"*/.git/*\" -not -path \"*/.claude/*\" -not -path \"*/归档/*\" -name \"*.md\" -exec cat {} +)",
+      "Bash(for f:*)",
+      "Bash(do echo:*)",
+      "Read(//d/Desktop/AIbot/**)",
+      "Bash(done)",
+      "Bash(git:*)"
     ]
   }
 }
