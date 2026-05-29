@@ -946,8 +946,8 @@
         document.body.classList.toggle('sidebar-open', v);
       });
 
-      /* ===== Chapter Progress Data (placeholder — will be filled with full 52-chapter mapping) ===== */
-      var CHAPTER_DATA = {};
+      /* ===== Chapter Progress Data ===== */
+      var CHAPTER_DATA = window.CHAPTER_DATA || {};
 
       /* ===== Companion Ball Logic ===== */
       var scrollPercent = computed(function () { return scrollPct.value; });
