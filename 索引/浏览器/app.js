@@ -411,6 +411,16 @@
       var readingBody = ref(null);
       var searchInput = ref(null);
 
+      /* ===== Companion Ball State ===== */
+      var ballPos = ref(JSON.parse(lsGet('aibot_ball_pos', '{"x":-1,"y":-1}')));
+      var companionOpen = ref(false);
+      var companionTab = ref('progress');
+      var spoilerTarget = ref(null);
+      var showResetConfirm = ref(false);
+      var swipeDir = ref('');
+      var ballDragging = ref(false);
+      var revealedSpoilers = ref(JSON.parse(lsGet('aibot_spoilers', '[]')));
+
       /* ── 侧边栏Tab定义 ── */
       var tabs = [
         { id: 'home', label: '首页', icon: '<path d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-4 0a1 1 0 01-1-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 01-1 1" stroke="currentColor" stroke-width="1.5" fill="none"/>' },
@@ -936,6 +946,238 @@
         document.body.classList.toggle('sidebar-open', v);
       });
 
+      /* ===== Chapter Progress Data (placeholder — will be filled with full 52-chapter mapping) ===== */
+      var CHAPTER_DATA = {};
+
+      /* ===== Companion Ball Logic ===== */
+      var scrollPercent = computed(function () { return scrollPct.value; });
+
+      // Initialize ball position
+      if (ballPos.value.x < 0) {
+        ballPos.value = { x: window.innerWidth - 70, y: window.innerHeight - 140 };
+      }
+
+      var companionWindowStyle = computed(function () {
+        var bx = ballPos.value.x, by = ballPos.value.y;
+        var ww = window.innerWidth, wh = window.innerHeight;
+        var winW = Math.min(360, ww - 24);
+        var winH = 480;
+        var left = bx - winW - 12;
+        if (left < 12) left = bx + 60;
+        if (left + winW > ww - 12) left = ww - winW - 12;
+        var top = by - winH / 2;
+        if (top < 12) top = 12;
+        if (top + winH > wh - 12) top = wh - winH - 12;
+        return { left: left + 'px', top: top + 'px', width: winW + 'px' };
+      });
+
+      function getChapterKey(file) {
+        if (!file) return null;
+        var m = file.match(/(前传|卷[一二三四五])\/(.+)\.md$/);
+        return m ? m[1] + '/' + m[2] : null;
+      }
+
+      function getReadChapters() {
+        var read = [];
+        var p = progress.value;
+        DATA.volumes.forEach(function (vol) {
+          vol.chapters.forEach(function (ch) {
+            if (p[ch] && p[ch].read) read.push(ch);
+          });
+        });
+        return read;
+      }
+
+      var allEvents = computed(function () {
+        var events = [];
+        Object.keys(CHAPTER_DATA).forEach(function (key) {
+          var d = CHAPTER_DATA[key];
+          if (d && d.events) {
+            d.events.forEach(function (e) {
+              events.push({ text: e.text, type: e.type, chapter: key });
+            });
+          }
+        });
+        return events;
+      });
+
+      function isChapterRead(chKey) {
+        var p = progress.value;
+        var found = false;
+        DATA.volumes.forEach(function (vol) {
+          vol.chapters.forEach(function (ch) {
+            var k = getChapterKey(ch);
+            if (k === chKey && p[ch] && p[ch].read) found = true;
+          });
+        });
+        return found;
+      }
+
+      var mainProgress = computed(function () {
+        var all = allEvents.value.filter(function (e) { return e.type === 'main'; });
+        if (!all.length) return 0;
+        var done = all.filter(function (e) { return isChapterRead(e.chapter); }).length;
+        return Math.round(done / all.length * 100);
+      });
+
+      var sideProgress = computed(function () {
+        var all = allEvents.value.filter(function (e) { return e.type === 'side'; });
+        if (!all.length) return 0;
+        var done = all.filter(function (e) { return isChapterRead(e.chapter); }).length;
+        return Math.round(done / all.length * 100);
+      });
+
+      var darkProgress = computed(function () {
+        var all = allEvents.value.filter(function (e) { return e.type === 'dark'; });
+        if (!all.length) return 0;
+        var done = all.filter(function (e) { return isChapterRead(e.chapter); }).length;
+        return Math.round(done / all.length * 100);
+      });
+
+      var currentEvents = computed(function () {
+        return allEvents.value.map(function (e) {
+          var unlocked = isChapterRead(e.chapter) || revealedSpoilers.value.indexOf(e.text) >= 0;
+          return { text: e.text, type: e.type, unlocked: unlocked };
+        });
+      });
+
+      var currentChapterChars = computed(function () {
+        var key = getChapterKey(currentFile.value);
+        if (!key || !CHAPTER_DATA[key]) return [];
+        var chars = CHAPTER_DATA[key].characters || [];
+        return chars.map(function (name) {
+          var c = DATA.characters.find(function (ch) { return ch.name === name; });
+          return { name: name, desc: c ? c.trait : '' };
+        });
+      });
+
+      var currentLog = computed(function () {
+        var key = getChapterKey(currentFile.value);
+        if (!key || !CHAPTER_DATA[key]) return [];
+        var d = CHAPTER_DATA[key];
+        var log = [];
+        (d.characters || []).forEach(function (name) {
+          var isNew = true;
+          Object.keys(CHAPTER_DATA).some(function (k) {
+            if (k === key) return true;
+            if (CHAPTER_DATA[k].characters && CHAPTER_DATA[k].characters.indexOf(name) >= 0) { isNew = false; return true; }
+          });
+          if (isNew) log.push({ type: 'char', text: name });
+        });
+        (d.relations || []).forEach(function (r) {
+          log.push({ type: 'relation', text: r.a + ' ↔ ' + r.b + '：' + r.label });
+        });
+        return log;
+      });
+
+      // Drag logic
+      var dragStart = { x: 0, y: 0, bx: 0, by: 0, moved: false };
+
+      function startDragBall(e) {
+        var ev = e.touches ? e.touches[0] : e;
+        dragStart.x = ev.clientX;
+        dragStart.y = ev.clientY;
+        dragStart.bx = ballPos.value.x;
+        dragStart.by = ballPos.value.y;
+        dragStart.moved = false;
+        ballDragging.value = true;
+        document.addEventListener('mousemove', onDragBall);
+        document.addEventListener('mouseup', endDragBall);
+        document.addEventListener('touchmove', onDragBall, { passive: false });
+        document.addEventListener('touchend', endDragBall);
+      }
+
+      function onDragBall(e) {
+        e.preventDefault();
+        var ev = e.touches ? e.touches[0] : e;
+        var dx = ev.clientX - dragStart.x;
+        var dy = ev.clientY - dragStart.y;
+        if (Math.abs(dx) > 3 || Math.abs(dy) > 3) dragStart.moved = true;
+        ballPos.value = {
+          x: Math.max(0, Math.min(window.innerWidth - 48, dragStart.bx + dx)),
+          y: Math.max(0, Math.min(window.innerHeight - 48, dragStart.by + dy))
+        };
+      }
+
+      function endDragBall() {
+        ballDragging.value = false;
+        document.removeEventListener('mousemove', onDragBall);
+        document.removeEventListener('mouseup', endDragBall);
+        document.removeEventListener('touchmove', onDragBall);
+        document.removeEventListener('touchend', endDragBall);
+        lsSet('aibot_ball_pos', JSON.stringify(ballPos.value));
+      }
+
+      function toggleCompanion() {
+        if (!dragStart.moved) companionOpen.value = !companionOpen.value;
+      }
+
+      function showSpoilerConfirmFn(e) { spoilerTarget.value = e; }
+
+      function revealSpoiler() {
+        if (spoilerTarget.value) {
+          var arr = revealedSpoilers.value.slice();
+          arr.push(spoilerTarget.value.text);
+          revealedSpoilers.value = arr;
+          lsSet('aibot_spoilers', JSON.stringify(arr));
+          spoilerTarget.value = null;
+        }
+      }
+
+      function confirmResetProgress() { showResetConfirm.value = true; }
+
+      function resetAllProgress() {
+        progress.value = {};
+        localStorage.removeItem(PROGRESS_KEY);
+        revealedSpoilers.value = [];
+        localStorage.removeItem('aibot_spoilers');
+        showResetConfirm.value = false;
+      }
+
+      function openCharFile(name) {
+        var path = '角色/档案/' + name + '.md';
+        if (DATA.files[path]) {
+          openFile(path);
+          companionOpen.value = false;
+        }
+      }
+
+      // Touch gesture for chapter navigation
+      var touchStart = { x: 0, y: 0, t: 0 };
+
+      function onTouchStart(e) {
+        if (!novelMode.value || readingMode.value) return;
+        touchStart.x = e.touches[0].clientX;
+        touchStart.y = e.touches[0].clientY;
+        touchStart.t = Date.now();
+      }
+
+      function onTouchEnd(e) {
+        if (!novelMode.value || readingMode.value) return;
+        var dx = e.changedTouches[0].clientX - touchStart.x;
+        var dy = e.changedTouches[0].clientY - touchStart.y;
+        var dt = Date.now() - touchStart.t;
+        if (dt < 500 && Math.abs(dx) > 80 && Math.abs(dx) > Math.abs(dy) * 2) {
+          if (dx < 0 && canNextChapter.value) {
+            swipeDir.value = 'right';
+            setTimeout(function () { openNovelChapter(currentVolIdx.value, currentChIdx.value + 1); swipeDir.value = ''; }, 200);
+          } else if (dx > 0 && canPrevChapter.value) {
+            swipeDir.value = 'left';
+            setTimeout(function () { openNovelChapter(currentVolIdx.value, currentChIdx.value - 1); swipeDir.value = ''; }, 200);
+          }
+        }
+      }
+
+      onMounted(function () {
+        document.addEventListener('touchstart', onTouchStart, { passive: true });
+        document.addEventListener('touchend', onTouchEnd, { passive: true });
+      });
+
+      onUnmounted(function () {
+        document.removeEventListener('touchstart', onTouchStart);
+        document.removeEventListener('touchend', onTouchEnd);
+      });
+
       return {
         /* 数据 */
         DATA: DATA,
@@ -1031,7 +1273,30 @@
         bookmarks: bookmarks,
         addBookmark: addBookmark,
         removeBookmark: removeBookmark,
-        loadBookmark: loadBookmark
+        loadBookmark: loadBookmark,
+
+        /* 悬浮球 */
+        ballPos: ballPos,
+        companionOpen: companionOpen,
+        companionTab: companionTab,
+        spoilerTarget: spoilerTarget,
+        showResetConfirm: showResetConfirm,
+        swipeDir: swipeDir,
+        scrollPercent: scrollPercent,
+        companionWindowStyle: companionWindowStyle,
+        mainProgress: mainProgress,
+        sideProgress: sideProgress,
+        darkProgress: darkProgress,
+        currentEvents: currentEvents,
+        currentChapterChars: currentChapterChars,
+        currentLog: currentLog,
+        startDragBall: startDragBall,
+        toggleCompanion: toggleCompanion,
+        showSpoilerConfirm: showSpoilerConfirmFn,
+        revealSpoiler: revealSpoiler,
+        confirmResetProgress: confirmResetProgress,
+        resetAllProgress: resetAllProgress,
+        openCharFile: openCharFile
       };
     }
   });
