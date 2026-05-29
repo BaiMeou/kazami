@@ -1,0 +1,21 @@
+{
+  "id": "when-this-user-gives-a-corrective-instruction-pr-55d4146640",
+  "scope": "project",
+  "projectId": "project-56c4a16f2e2aab48",
+  "projectName": "kazami",
+  "source": "session-observation",
+  "evidence": [
+    "我叫你重读你应该知道我要叫你重读什么东西吧"
+  ],
+  "observationIds": [
+    "60c24fc8-5dd8-4717-aa7c-4dba45433316"
+  ],
+  "trigger": "When this user gives a corrective instruction",
+  "action": "Prefer this corrected action: 知道我要叫你重读什么东西吧.",
+  "confidence": 0.7,
+  "domain": "project",
+  "evidenceOutcome": "failure",
+  "createdAt": "2026-04-27T17:33:50.736Z",
+  "updatedAt": "2026-04-27T17:33:50.736Z",
+  "status": "pending"
+}

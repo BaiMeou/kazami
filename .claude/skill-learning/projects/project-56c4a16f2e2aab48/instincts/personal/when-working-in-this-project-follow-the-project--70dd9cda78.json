@@ -1,0 +1,20 @@
+{
+  "id": "when-working-in-this-project-follow-the-project--70dd9cda78",
+  "scope": "project",
+  "projectId": "project-56c4a16f2e2aab48",
+  "projectName": "kazami",
+  "source": "session-observation",
+  "evidence": [
+    "<task-notification>\n<task-id>a1b3b2710323d68be</task-id>\n<tool-use-id>toolu_01PdDnwvqehScSipBV7oiZyE</tool-use-id>\n<output-file>C:\\Users\\34762\\AppData\\Local\\Temp\\claude\\D--Desktop-AIbot\\75050bec-0cd3-46c6-ba88-65db227ccfbd\\tasks\\a1b3b2710323d68be.output</output-file>\n<status>completed</status>\n<summary>Agent \"Read character profiles for 3P\" completed</summary>\n<result>API Error: 400 {\"error\":{\"type\":\"invalid_request_error\",\"message\":\"The `content[].thinking` in the thinking mode must be passed back to the API. (request id: 202604270437489331918288268d9d6jvTptqA5)\"},\"type\":\"error\"}</result>\n<usage><total_tokens>0</total_tokens><tool_uses>0</tool_uses><duration_ms>4970</duration_ms></usage>\n</task-notification>"
+  ],
+  "observationIds": [
+    "0f2e31e3-b087-4168-94c6-1c876fb78175"
+  ],
+  "trigger": "When working in this project",
+  "action": "Follow the project convention: <task-notification>\n<task-id>a1b3b2710323d68be</task-id>\n<tool-use-id>toolu_01PdDnwvqehScSipBV7oiZyE</tool-use-id>\n<output-file>C:\\Users\\34762\\AppData\\Local\\Temp\\claude\\D--Desktop-AIbot\\75050bec-0cd3-46c6-ba88-65db227ccfbd\\tasks\\a1b3b2710323d68be.output</output-file>\n<status>completed</status>\n<summary>Agent \"Read character profiles for 3P\" completed</summary>\n<result>API Error: 400 {\"error\":{\"type\":\"invalid_request_error\",\"message\":\"The `content[].thinking` in the thinking mode must be passed back to the API. (request id: 202604270437489331918288268d9d6jvTptqA5)\"},\"type\":\"error\"}</result>\n<usage><total_tokens>0</total_tokens><tool_uses>0</tool_uses><duration_ms>4970</duration_ms></usage>\n</task-notification>",
+  "confidence": 0.4,
+  "domain": "project",
+  "createdAt": "2026-04-27T04:43:41.975Z",
+  "updatedAt": "2026-04-27T04:43:41.975Z",
+  "status": "pending"
+}

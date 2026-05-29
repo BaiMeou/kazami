@@ -1,0 +1,22 @@
+{
+  "id": "when-this-user-gives-a-corrective-instruction-pr-7f9e371bc7",
+  "scope": "project",
+  "projectId": "project-56c4a16f2e2aab48",
+  "projectName": "kazami",
+  "source": "session-observation",
+  "evidence": [
+    "<task-notification>\n<task-id>acc6dfa5927af8862</task-id>\n<tool-use-id>toolu_01XRhYzKRCpCn9vX7gKaoHkC</tool-use-id>\n<output-file>C:\\Users\\34762\\AppData\\Local\\Temp\\claude\\D--Desktop-AIbot\\75050bec-0cd3-46c6-ba88-65db227ccfbd\\tasks\\acc6dfa5927af8862.output</output-file>\n<status>completed</status>\n<summary>Agent \"Read character profiles\" completed</summary>\n<result>API Error: 400 {\"error\":{\"type\":\"invalid_request_error\",\"message\":\"The `content[].thinking` in the thinking mode must be passed back to the API. (request id: 202604270430575323135258268d9d6rnw1m4RJ)\"},\"type\":\"error\"}</result>\n<usage><total_tokens>0</total_tokens><tool_uses>0</tool_uses><duration_ms>3867</duration_ms></usage>\n</task-notification>",
+    "<task-notification>\n<task-id>a1b3b2710323d68be</task-id>\n<tool-use-id>toolu_01PdDnwvqehScSipBV7oiZyE</tool-use-id>\n<output-file>C:\\Users\\34762\\AppData\\Local\\Temp\\claude\\D--Desktop-AIbot\\75050bec-0cd3-46c6-ba88-65db227ccfbd\\tasks\\a1b3b2710323d68be.output</output-file>\n<status>completed</status>\n<summary>Agent \"Read character profiles for 3P\" completed</summary>\n<result>API Error: 400 {\"error\":{\"type\":\"invalid_request_error\",\"message\":\"The `content[].thinking` in the thinking mode must be passed back to the API. (request id: 202604270437489331918288268d9d6jvTptqA5)\"},\"type\":\"error\"}</result>\n<usage><total_tokens>0</total_tokens><tool_uses>0</tool_uses><duration_ms>4970</duration_ms></usage>\n</task-notification>"
+  ],
+  "observationIds": [
+    "e5c85418-433e-4d9a-bd0d-aa63271dfed7",
+    "0f2e31e3-b087-4168-94c6-1c876fb78175"
+  ],
+  "trigger": "When this user gives a corrective instruction",
+  "action": "Prefer this corrected action: be passed back to the API.",
+  "confidence": 0.75,
+  "domain": "security",
+  "createdAt": "2026-04-27T04:43:41.924Z",
+  "updatedAt": "2026-04-27T04:43:41.963Z",
+  "status": "pending"
+}
