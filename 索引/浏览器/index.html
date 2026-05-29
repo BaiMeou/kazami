@@ -561,127 +561,127 @@
         </div>
       </div>
     </div>
-  </div>
 
-  <!-- Companion Floating Ball -->
-  <div id="companion-ball" v-if="novelMode && currentFile"
-       :style="{ left: ballPos.x + 'px', top: ballPos.y + 'px' }"
-       @mousedown="startDragBall" @touchstart.prevent="startDragBall"
-       @click="toggleCompanion">
-    {{ scrollPercent }}%
-  </div>
-
-  <!-- Companion Floating Window -->
-  <div id="companion-window" :class="{ visible: companionOpen }"
-       :style="companionWindowStyle">
-    <div class="companion-header">
-      <button class="companion-tab" :class="{ active: companionTab === 'progress' }"
-              @click="companionTab = 'progress'">进度</button>
-      <button class="companion-tab" :class="{ active: companionTab === 'chars' }"
-              @click="companionTab = 'chars'">角色</button>
-      <button class="companion-tab" :class="{ active: companionTab === 'graph' }"
-              @click="companionTab = 'graph'">关系</button>
-      <button class="companion-tab" :class="{ active: companionTab === 'log' }"
-              @click="companionTab = 'log'">日志</button>
-      <button class="companion-close" @click="companionOpen = false">×</button>
+    <!-- Companion Floating Ball -->
+    <div id="companion-ball" v-if="novelMode && currentFile"
+         :style="{ left: ballPos.x + 'px', top: ballPos.y + 'px' }"
+         @mousedown="startDragBall" @touchstart.prevent="startDragBall"
+         @click="toggleCompanion">
+      {{ scrollPercent }}%
     </div>
-    <div class="companion-body">
-      <div v-if="companionTab === 'progress'">
-        <div class="progress-section">
-          <div class="progress-label"><span>主线</span><span>{{ mainProgress }}%</span></div>
-          <div class="progress-bar-bg"><div class="progress-bar-fill main" :style="{ width: mainProgress + '%' }"></div></div>
+
+    <!-- Companion Floating Window -->
+    <div id="companion-window" :class="{ visible: companionOpen }"
+         :style="companionWindowStyle">
+      <div class="companion-header">
+        <button class="companion-tab" :class="{ active: companionTab === 'progress' }"
+                @click="companionTab = 'progress'">进度</button>
+        <button class="companion-tab" :class="{ active: companionTab === 'chars' }"
+                @click="companionTab = 'chars'">角色</button>
+        <button class="companion-tab" :class="{ active: companionTab === 'graph' }"
+                @click="companionTab = 'graph'">关系</button>
+        <button class="companion-tab" :class="{ active: companionTab === 'log' }"
+                @click="companionTab = 'log'">日志</button>
+        <button class="companion-close" @click="companionOpen = false">×</button>
+      </div>
+      <div class="companion-body">
+        <div v-if="companionTab === 'progress'">
+          <div class="progress-section">
+            <div class="progress-label"><span>主线</span><span>{{ mainProgress }}%</span></div>
+            <div class="progress-bar-bg"><div class="progress-bar-fill main" :style="{ width: mainProgress + '%' }"></div></div>
+          </div>
+          <div class="progress-section">
+            <div class="progress-label"><span>支线</span><span>{{ sideProgress }}%</span></div>
+            <div class="progress-bar-bg"><div class="progress-bar-fill side" :style="{ width: sideProgress + '%' }"></div></div>
+          </div>
+          <div class="progress-section">
+            <div class="progress-label"><span>暗线</span><span>{{ darkProgress }}%</span></div>
+            <div class="progress-bar-bg"><div class="progress-bar-fill dark" :style="{ width: darkProgress + '%' }"></div></div>
+          </div>
+          <div class="progress-events">
+            <div class="progress-event" v-for="e in currentEvents" :key="e.text"
+                 :class="{ done: e.unlocked, locked: !e.unlocked }"
+                 @click="e.type === 'dark' && !e.unlocked ? showSpoilerConfirm(e) : null">
+              {{ e.unlocked ? e.text : (e.type === 'dark' ? '??? (点击查看)' : '???') }}
+            </div>
+          </div>
+          <button class="reset-progress-btn" @click="confirmResetProgress">重置阅读进度</button>
         </div>
-        <div class="progress-section">
-          <div class="progress-label"><span>支线</span><span>{{ sideProgress }}%</span></div>
-          <div class="progress-bar-bg"><div class="progress-bar-fill side" :style="{ width: sideProgress + '%' }"></div></div>
-        </div>
-        <div class="progress-section">
-          <div class="progress-label"><span>暗线</span><span>{{ darkProgress }}%</span></div>
-          <div class="progress-bar-bg"><div class="progress-bar-fill dark" :style="{ width: darkProgress + '%' }"></div></div>
-        </div>
-        <div class="progress-events">
-          <div class="progress-event" v-for="e in currentEvents" :key="e.text"
-               :class="{ done: e.unlocked, locked: !e.unlocked }"
-               @click="e.type === 'dark' && !e.unlocked ? showSpoilerConfirm(e) : null">
-            {{ e.unlocked ? e.text : (e.type === 'dark' ? '??? (点击查看)' : '???') }}
+        <div v-if="companionTab === 'chars'">
+          <div class="companion-chars">
+            <div class="companion-char-card" v-for="c in currentChapterChars" :key="c.name"
+                 @click="openCharFile(c.name)">
+              <div class="char-avatar">{{ c.name[0] }}</div>
+              <div>
+                <div class="char-info-name">{{ c.name }}</div>
+                <div class="char-info-desc">{{ c.desc }}</div>
+              </div>
+            </div>
           </div>
         </div>
-        <button class="reset-progress-btn" @click="confirmResetProgress">重置阅读进度</button>
-      </div>
-      <div v-if="companionTab === 'chars'">
-        <div class="companion-chars">
-          <div class="companion-char-card" v-for="c in currentChapterChars" :key="c.name"
-               @click="openCharFile(c.name)">
-            <div class="char-avatar">{{ c.name[0] }}</div>
-            <div>
-              <div class="char-info-name">{{ c.name }}</div>
-              <div class="char-info-desc">{{ c.desc }}</div>
+        <div v-if="companionTab === 'graph'">
+          <canvas id="companion-graph" width="320" height="280" style="width:100%;border-radius:8px;background:var(--bg-secondary)"></canvas>
+        </div>
+        <div v-if="companionTab === 'log'">
+          <div class="companion-log">
+            <div class="log-entry" v-for="l in currentLog" :key="l.text">
+              <span class="log-badge" :class="l.type === 'char' ? 'new-char' : 'new-relation'">
+                {{ l.type === 'char' ? '新角色' : '新关系' }}
+              </span>
+              <span>{{ l.text }}</span>
+            </div>
+            <div v-if="!currentLog.length" style="color:var(--text-muted);font-size:13px;text-align:center;padding:20px">
+              本章暂无新增内容
             </div>
           </div>
         </div>
       </div>
-      <div v-if="companionTab === 'graph'">
-        <canvas id="companion-graph" width="320" height="280" style="width:100%;border-radius:8px;background:var(--bg-secondary)"></canvas>
-      </div>
-      <div v-if="companionTab === 'log'">
-        <div class="companion-log">
-          <div class="log-entry" v-for="l in currentLog" :key="l.text">
-            <span class="log-badge" :class="l.type === 'char' ? 'new-char' : 'new-relation'">
-              {{ l.type === 'char' ? '新角色' : '新关系' }}
-            </span>
-            <span>{{ l.text }}</span>
-          </div>
-          <div v-if="!currentLog.length" style="color:var(--text-muted);font-size:13px;text-align:center;padding:20px">
-            本章暂无新增内容
-          </div>
+    </div>
+
+    <!-- Spoiler Confirm -->
+    <div class="spoiler-confirm" v-if="spoilerTarget" @click.self="spoilerTarget = null">
+      <div class="spoiler-confirm-box">
+        <p>此内容包含未读到的暗线剧情，确认查看？</p>
+        <div class="spoiler-btns">
+          <button class="spoiler-btn cancel" @click="spoilerTarget = null">取消</button>
+          <button class="spoiler-btn confirm" @click="revealSpoiler">查看</button>
         </div>
       </div>
     </div>
-  </div>
 
-  <!-- Spoiler Confirm -->
-  <div class="spoiler-confirm" v-if="spoilerTarget" @click.self="spoilerTarget = null">
-    <div class="spoiler-confirm-box">
-      <p>此内容包含未读到的暗线剧情，确认查看？</p>
-      <div class="spoiler-btns">
-        <button class="spoiler-btn cancel" @click="spoilerTarget = null">取消</button>
-        <button class="spoiler-btn confirm" @click="revealSpoiler">查看</button>
+    <!-- Reset Progress Confirm -->
+    <div class="spoiler-confirm" v-if="showResetConfirm" @click.self="showResetConfirm = false">
+      <div class="spoiler-confirm-box">
+        <p>确定要重置所有阅读进度吗？此操作不可撤销。</p>
+        <div class="spoiler-btns">
+          <button class="spoiler-btn cancel" @click="showResetConfirm = false">取消</button>
+          <button class="spoiler-btn confirm" @click="resetAllProgress">确定重置</button>
+        </div>
       </div>
     </div>
-  </div>
 
-  <!-- Reset Progress Confirm -->
-  <div class="spoiler-confirm" v-if="showResetConfirm" @click.self="showResetConfirm = false">
-    <div class="spoiler-confirm-box">
-      <p>确定要重置所有阅读进度吗？此操作不可撤销。</p>
-      <div class="spoiler-btns">
-        <button class="spoiler-btn cancel" @click="showResetConfirm = false">取消</button>
-        <button class="spoiler-btn confirm" @click="resetAllProgress">确定重置</button>
-      </div>
+    <!-- Swipe Indicators -->
+    <div class="swipe-indicator left" :class="{ active: swipeDir === 'left' }">◀</div>
+    <div class="swipe-indicator right" :class="{ active: swipeDir === 'right' }">▶</div>
+
+    <!-- Mobile Bottom Bar -->
+    <div id="mobile-bottom-bar">
+      <button class="mobile-tab" :class="{ active: tab === 'home' }" @click="switchTab('home')">
+        <span class="tab-icon">🏠</span>首页
+      </button>
+      <button class="mobile-tab" :class="{ active: tab === 'novel' }" @click="switchTab('novel')">
+        <span class="tab-icon">📖</span>小说
+      </button>
+      <button class="mobile-tab" :class="{ active: tab === 'char' }" @click="switchTab('char')">
+        <span class="tab-icon">👥</span>人物
+      </button>
+      <button class="mobile-tab" :class="{ active: tab === 'search' }" @click="switchTab('search')">
+        <span class="tab-icon">🔍</span>搜索
+      </button>
+      <button class="mobile-tab" :class="{ active: tab === 'more' }" @click="switchTab('more')">
+        <span class="tab-icon">⋯</span>更多
+      </button>
     </div>
-  </div>
-
-  <!-- Swipe Indicators -->
-  <div class="swipe-indicator left" :class="{ active: swipeDir === 'left' }">◀</div>
-  <div class="swipe-indicator right" :class="{ active: swipeDir === 'right' }">▶</div>
-
-  <!-- Mobile Bottom Bar -->
-  <div id="mobile-bottom-bar">
-    <button class="mobile-tab" :class="{ active: tab === 'home' }" @click="switchTab('home')">
-      <span class="tab-icon">🏠</span>首页
-    </button>
-    <button class="mobile-tab" :class="{ active: tab === 'novel' }" @click="switchTab('novel')">
-      <span class="tab-icon">📖</span>小说
-    </button>
-    <button class="mobile-tab" :class="{ active: tab === 'char' }" @click="switchTab('char')">
-      <span class="tab-icon">👥</span>人物
-    </button>
-    <button class="mobile-tab" :class="{ active: tab === 'search' }" @click="switchTab('search')">
-      <span class="tab-icon">🔍</span>搜索
-    </button>
-    <button class="mobile-tab" :class="{ active: tab === 'more' }" @click="switchTab('more')">
-      <span class="tab-icon">⋯</span>更多
-    </button>
   </div>
 
   <script src="data.js"></script>
